@@ -1,0 +1,222 @@
+<?= $this->include('templates/header') ?>
+
+<div class="flex flex-col gap-6">
+    <?php if (session()->getFlashdata('success')): ?>
+        <div class="p-4 bg-green-100 dark:bg-green-900/20 border border-green-500 text-green-700 dark:text-green-400 rounded-lg">
+            <?= session()->getFlashdata('success') ?>
+        </div>
+    <?php endif; ?>
+    <?php if (session()->getFlashdata('error')): ?>
+        <div class="p-4 bg-red-100 dark:bg-red-900/20 border border-red-500 text-red-700 dark:text-red-400 rounded-lg">
+            <?= session()->getFlashdata('error') ?>
+        </div>
+    <?php endif; ?>
+
+    <div class="flex flex-wrap items-center justify-between gap-4 mt-6 md:mt-4">
+        <div class="flex flex-col gap-1">
+            <h1 class="text-gray-900 dark:text-white text-3xl font-bold tracking-tight">Raw Materials</h1>
+            <p class="text-gray-500 dark:text-gray-400 text-base font-normal leading-normal">Track and manage raw materials with UHF RFID tags.</p>
+        </div>
+        <a href="<?= base_url('raw-materials/add') ?>" class="flex items-center justify-center h-10 px-4 gap-2 bg-primary text-white rounded-lg text-sm font-bold tracking-wide hover:bg-primary/90 transition-colors shadow-sm">
+            <span class="material-symbols-outlined text-base">add</span>
+            <span>Add Material</span>
+        </a>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white dark:bg-background-dark p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center gap-4">
+            <div class="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
+                <span class="material-symbols-outlined text-2xl">category</span>
+            </div>
+            <div>
+                <p class="text-gray-500 dark:text-gray-400 text-sm font-medium">Total</p>
+                <p class="text-gray-900 dark:text-white text-2xl font-bold"><?= $stats['total'] ?></p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-background-dark p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center gap-4">
+            <div class="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                <span class="material-symbols-outlined text-2xl">check_circle</span>
+            </div>
+            <div>
+                <p class="text-gray-500 dark:text-gray-400 text-sm font-medium">Active</p>
+                <p class="text-gray-900 dark:text-white text-2xl font-bold"><?= $stats['active'] ?></p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-background-dark p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center gap-4">
+            <div class="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                <span class="material-symbols-outlined text-2xl">cancel</span>
+            </div>
+            <div>
+                <p class="text-gray-500 dark:text-gray-400 text-sm font-medium">Inactive</p>
+                <p class="text-gray-900 dark:text-white text-2xl font-bold"><?= $stats['inactive'] ?></p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-background-dark p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center gap-4">
+            <div class="p-3 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400">
+                <span class="material-symbols-outlined text-2xl">rss_feed</span>
+            </div>
+            <div>
+                <p class="text-gray-500 dark:text-gray-400 text-sm font-medium">UHF Tagged</p>
+                <p class="text-gray-900 dark:text-white text-2xl font-bold"><?= $stats['tagged'] ?></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700">
+        <div class="flex flex-wrap justify-between items-center gap-4 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div class="relative w-full max-w-md">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xl">search</span>
+                <input id="searchInput" class="pl-10 w-full h-11 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-400" placeholder="Search by name, code, or category..." type="text"/>
+            </div>
+            <select id="statusFilter" class="h-10 px-3 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+            </select>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full" id="materialsTable">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700">
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Code</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Material Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">Category</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">UHF Tag (EPC)</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">Last Seen</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700" id="materialsBody">
+                    <?php if (empty($materials)): ?>
+                        <tr>
+                            <td colspan="7" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                                <span class="material-symbols-outlined text-4xl block mb-2">category</span>
+                                No raw materials found. <a href="<?= base_url('raw-materials/add') ?>" class="text-primary hover:underline">Add one now.</a>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($materials as $m): ?>
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors material-row"
+                                data-name="<?= strtolower(esc($m['material_name'])) ?>"
+                                data-code="<?= strtolower(esc($m['material_code'])) ?>"
+                                data-category="<?= strtolower(esc($m['category'] ?? '')) ?>"
+                                data-status="<?= esc($m['status']) ?>">
+                                <td class="px-6 py-4 text-sm font-mono font-medium text-primary"><?= esc($m['material_code']) ?></td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                                            <span class="material-symbols-outlined text-base text-amber-600 dark:text-amber-400">category</span>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-900 dark:text-white"><?= esc($m['material_name']) ?></p>
+                                            <?php if (!empty($m['unit'])): ?>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400">Unit: <?= esc($m['unit']) ?></p>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell"><?= esc($m['category'] ?? '—') ?></td>
+                                <td class="px-6 py-4 hidden lg:table-cell">
+                                    <?php if (!empty($m['epc_no'])): ?>
+                                        <span class="inline-flex items-center gap-1 text-xs font-mono bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 px-2 py-1 rounded">
+                                            <span class="material-symbols-outlined text-xs">rss_feed</span>
+                                            <?= esc($m['epc_no']) ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-xs text-gray-400 dark:text-gray-500">No tag</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4 hidden lg:table-cell">
+                                    <?php if (!empty($m['zone_name'])): ?>
+                                        <div>
+                                            <p class="text-sm text-gray-700 dark:text-gray-300"><?= esc($m['zone_name']) ?></p>
+                                            <?php if (!empty($m['last_seen_at'])): ?>
+                                                <p class="text-xs text-gray-400 dark:text-gray-500"><?= date('d M Y H:i', strtotime($m['last_seen_at'])) ?></p>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="text-xs text-gray-400 dark:text-gray-500">Never scanned</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <?php if ($m['status'] === 'active'): ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400">Active</span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400">Inactive</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <a href="<?= base_url('raw-materials/view/' . $m['id']) ?>" class="p-1.5 rounded-lg text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="View">
+                                            <span class="material-symbols-outlined text-base">visibility</span>
+                                        </a>
+                                        <a href="<?= base_url('raw-materials/edit/' . $m['id']) ?>" class="p-1.5 rounded-lg text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Edit">
+                                            <span class="material-symbols-outlined text-base">edit</span>
+                                        </a>
+                                        <button onclick="confirmDelete(<?= $m['id'] ?>, '<?= esc($m['material_name']) ?>')" class="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
+                                            <span class="material-symbols-outlined text-base">delete</span>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-sm w-full p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="p-2 rounded-lg bg-red-100 dark:bg-red-900/20">
+                <span class="material-symbols-outlined text-red-600 dark:text-red-400">delete</span>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white">Delete Raw Material</h3>
+        </div>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">Are you sure you want to delete <strong id="deleteMaterialName"></strong>? This action cannot be undone.</p>
+        <div class="flex gap-3">
+            <button onclick="closeDeleteModal()" class="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
+            <form id="deleteForm" method="post" class="flex-1">
+                <?= csrf_field() ?>
+                <button type="submit" class="w-full h-10 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700">Delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const searchInput  = document.getElementById('searchInput');
+const statusFilter = document.getElementById('statusFilter');
+const rows         = document.querySelectorAll('.material-row');
+
+function filterRows() {
+    const q      = searchInput.value.toLowerCase();
+    const status = statusFilter.value;
+    rows.forEach(row => {
+        const matchSearch = !q || row.dataset.name.includes(q) || row.dataset.code.includes(q) || row.dataset.category.includes(q);
+        const matchStatus = !status || row.dataset.status === status;
+        row.style.display = matchSearch && matchStatus ? '' : 'none';
+    });
+}
+
+searchInput.addEventListener('input', filterRows);
+statusFilter.addEventListener('change', filterRows);
+
+function confirmDelete(id, name) {
+    document.getElementById('deleteMaterialName').textContent = name;
+    document.getElementById('deleteForm').action = '<?= base_url('raw-materials/delete/') ?>' + id;
+    document.getElementById('deleteModal').classList.remove('hidden');
+}
+function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.add('hidden');
+}
+</script>
+
+<?= $this->include('templates/footer') ?>

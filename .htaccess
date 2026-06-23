@@ -1,0 +1,33 @@
+# Disable directory browsing
+Options -Indexes
+
+# Allow access to this directory
+<IfModule mod_authz_core.c>
+	Require all granted
+</IfModule>
+<IfModule !mod_authz_core.c>
+	Order allow,deny
+	Allow from all
+</IfModule>
+
+# Rewrite engine
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	Options +FollowSymLinks
+	
+	# Set the base path for subfolder installation
+	RewriteBase /workwise-kk/
+	
+	# If the request is for the root, redirect to public/
+	RewriteRule ^$ public/ [L]
+	
+	# Redirect all requests to the public folder
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Deny access to sensitive files
+<FilesMatch "^\.">
+	Require all denied
+</FilesMatch>

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFID Reader Test Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        
+        button {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-scan {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            grid-column: 1 / -1;
+        }
+        
+        .btn-scan:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-checkin {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .btn-checkout {
+            background: #ff5722;
+            color: white;
+        }
+        
+        .btn-checkin:hover, .btn-checkout:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-test {
+            background: #2196F3;
+            color: white;
+            grid-column: 1 / -1;
+            margin-top: 10px;
+        }
+        
+        .btn-test:hover {
+            background: #1976D2;
+        }
+        
+        .response {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .response.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        
+        .response.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+        
+        .response-header {
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .response-body {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .worker-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        
+        .worker-info strong {
+            color: #667eea;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .quick-tags {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .quick-tag {
+            padding: 5px 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        .quick-tag:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔖 RFID Reader Test Interface</h1>
+        <p class="subtitle">Yanzeo SA810 Integration Testing Tool</p>
+        
+        <div class="form-group">
+            <label for="apiUrl">API Base URL</label>
+            <input type="text" id="apiUrl" value="http://localhost/workwise/api/rfid" placeholder="http://your-server/api/rfid">
+        </div>
+        
+        <div class="form-group">
+            <label for="tagId">RFID Tag ID</label>
+            <input type="text" id="tagId" placeholder="E2003412EF1234567890ABCD">
+            <div class="quick-tags">
+                <span class="quick-tag" onclick="document.getElementById('tagId').value='ABC123'">ABC123</span>
+                <span class="quick-tag" onclick="document.getElementById('tagId').value='E2001234'">E2001234</span>
+                <span class="quick-tag" onclick="document.getElementById('tagId').value='TEST001'">TEST001</span>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button class="btn-scan" onclick="scanTag()">
+                🔍 Scan Tag (Auto Check-in/out)
+            </button>
+        </div>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e0e0e0;">
+        
+        <p style="margin-bottom: 15px; color: #666; font-weight: 600;">Manual Attendance Entry</p>
+        
+        <div class="form-group">
+            <label for="workerId">Worker ID</label>
+            <input type="text" id="workerId" placeholder="W001">
+        </div>
+        
+        <div class="form-group">
+            <label for="zoneId">Zone ID</label>
+            <input type="number" id="zoneId" value="1" placeholder="1">
+        </div>
+        
+        <div class="button-group">
+            <button class="btn-checkin" onclick="manualAttendance('in')">
+                ✅ Check In
+            </button>
+            <button class="btn-checkout" onclick="manualAttendance('out')">
+                ❌ Check Out
+            </button>
+        </div>
+        
+        <div class="button-group">
+            <button class="btn-test" onclick="testConnection()">
+                🔌 Test Reader Connection
+            </button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px; color: #666;">Processing...</p>
+        </div>
+        
+        <div class="response" id="response"></div>
+    </div>
+    
+    <script>
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('response').style.display = 'none';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        function showResponse(success, message, data = null) {
+            hideLoading();
+            const responseDiv = document.getElementById('response');
+            responseDiv.className = 'response ' + (success ? 'success' : 'error');
+            
+            let html = `<div class="response-header">${success ? '✅ Success' : '❌ Error'}</div>`;
+            html += `<div class="response-body">${message}`;
+            
+            if (data) {
+                if (data.worker) {
+                    html += `
+                        <div class="worker-info">
+                            <strong>Worker:</strong> ${data.worker.name}<br>
+                            <strong>Worker ID:</strong> ${data.worker.id}<br>
+                            <strong>Zone:</strong> ${data.zone ? data.zone.name : 'N/A'}<br>
+                            <strong>Time:</strong> ${data.time || 'N/A'}<br>
+                            <strong>Action:</strong> ${data.action || 'N/A'}
+                            ${data.duration ? `<br><strong>Duration:</strong> ${data.duration}` : ''}
+                        </div>
+                    `;
+                }
+                
+                html += `<br><br><small><strong>Raw Response:</strong><br><code>${JSON.stringify(data, null, 2)}</code></small>`;
+            }
+            
+            html += '</div>';
+            responseDiv.innerHTML = html;
+            responseDiv.style.display = 'block';
+        }
+        
+        async function scanTag() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const tagId = document.getElementById('tagId').value;
+            
+            if (!tagId) {
+                showResponse(false, 'Please enter an RFID Tag ID');
+                return;
+            }
+            
+            // If opened as popup, send message to parent and close
+            if (window.opener) {
+                window.opener.postMessage({
+                    type: 'RFID_SCANNED',
+                    tagId: tagId.toUpperCase()
+                }, '*');
+                showResponse(true, 'RFID Tag sent to parent window. You can close this window.', { tagId: tagId });
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                const response = await fetch(`${apiUrl}/scan?tag_id=${encodeURIComponent(tagId)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const action = data.action === 'checkin' ? 'Check-in' : 'Check-out';
+                    showResponse(true, `${action} recorded successfully!`, data);
+                } else {
+                    showResponse(false, data.message || 'Failed to process tag', data);
+                }
+            } catch (error) {
+                showResponse(false, `Network error: ${error.message}`);
+            }
+        }
+        
+        async function manualAttendance(action) {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const workerId = document.getElementById('workerId').value;
+            const zoneId = document.getElementById('zoneId').value;
+            
+            if (!workerId || !zoneId) {
+                showResponse(false, 'Please enter both Worker ID and Zone ID');
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                const response = await fetch(`${apiUrl}/manual`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        worker_id: workerId,
+                        zone_id: parseInt(zoneId),
+                        action: action
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const actionName = action === 'in' ? 'Check-in' : 'Check-out';
+                    showResponse(true, `${actionName} recorded successfully!`, data);
+                } else {
+                    showResponse(false, data.message || 'Failed to record attendance', data);
+                }
+            } catch (error) {
+                showResponse(false, `Network error: ${error.message}`);
+            }
+        }
+        
+        async function testConnection() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            showLoading();
+            
+            try {
+                const response = await fetch(`${apiUrl}/test-connection`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResponse(true, 'Successfully connected to RFID reader!', data);
+                } else {
+                    showResponse(false, 'Failed to connect to RFID reader', data);
+                }
+            } catch (error) {
+                showResponse(false, `Network error: ${error.message}`);
+            }
+        }
+        
+        // Allow Enter key to scan
+        document.getElementById('tagId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                scanTag();
+            }
+        });
+    </script>
+</body>
+</html>

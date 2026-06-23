@@ -1,0 +1,21 @@
+[Unit]
+Description=WorkWise RFID Listener Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/workwise
+ExecStart=/usr/bin/php /var/www/workwise/spark rfid:listen
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/www/workwise/writable/logs/rfid-listener.log
+StandardError=append:/var/www/workwise/writable/logs/rfid-listener-error.log
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
