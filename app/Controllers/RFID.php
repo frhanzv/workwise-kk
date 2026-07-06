@@ -691,7 +691,9 @@ class RFID extends ResourceController
 
     protected function isLookupAntenna(string $function): bool
     {
-        return strtoupper(trim($function)) === 'LOOKUP';
+        $fn = strtoupper(str_replace(['-', '_'], ' ', trim($function)));
+
+        return in_array($fn, ['LOOKUP', 'TAG STOCK IN', 'TAG STOCKIN', 'SEARCH STOCK', 'STOCK CHECK'], true);
     }
 
     protected function processInventoryLookup(string $tagId, ?array $zone, string $timestamp): array
@@ -699,9 +701,10 @@ class RFID extends ResourceController
         $stockService = new InventoryStockService();
         $match        = $stockService->lookupByScan($tagId, null);
         $zonePayload  = $zone ? ['id' => $zone['zone_id'], 'name' => $zone['zone_name']] : null;
+        $epc          = strtoupper($tagId);
 
         RfidLookupQueue::push([
-            'epc'       => strtoupper($tagId),
+            'epc'       => $epc,
             'zone_id'   => $zone['zone_id'] ?? null,
             'zone_name' => $zone['zone_name'] ?? null,
             'timestamp' => $timestamp,
@@ -716,10 +719,10 @@ class RFID extends ResourceController
             log_message('info', "Lookup desk scan — unregistered tag: {$tagId}");
 
             return [
-                'success' => false,
-                'message' => 'Tag not registered. Use Tag + Stock In to assign.',
+                'success' => true,
+                'message' => 'Lookup: unregistered tag — use Tag + Stock In to assign',
                 'action'  => 'lookup',
-                'epc'     => strtoupper($tagId),
+                'epc'     => $epc,
                 'zone'    => $zonePayload,
             ];
         }
@@ -911,22 +914,16 @@ class RFID extends ResourceController
             }
         }
 
-        // Products / raw materials may only enter zones listed as storage locations (when configured).
+        // Wrong storage zone: still record presence for mismatch monitoring (do not block RFID).
+        $locationMismatch = false;
         if (in_array($itemType, ['product', 'raw_material'], true)) {
             $item = $itemModel->find($itemId);
             if ($item && !ProductModel::isZoneAllowedForProduct($item, $zoneId)) {
+                $locationMismatch = true;
                 log_message(
                     'warning',
-                    "Inventory zone IN denied: {$itemType} {$itemCode} not allowed in zone {$zoneId}"
+                    "Inventory location mismatch: {$itemType} {$itemCode} seen in zone {$zoneId}"
                 );
-
-                return [
-                    'success'    => false,
-                    'message'    => 'Access denied: ' . $itemName . ' is not allowed in ' . ($zone['zone_name'] ?? $zoneId),
-                    'action'     => 'denied',
-                    $responseKey => $itemPayload,
-                    'zone'       => $zonePayload,
-                ];
             }
         }
 
@@ -951,7 +948,7 @@ class RFID extends ResourceController
         }
 
         $stockResult = null;
-        if ($tagId) {
+        if ($tagId && !$locationMismatch) {
             $stockResult = $stockService->stockInFromZone(
                 $itemType,
                 $itemId,
@@ -959,6 +956,20 @@ class RFID extends ResourceController
                 $itemPayload['epc_no'] ?? null,
                 $zoneId
             );
+        }
+
+        if ($locationMismatch) {
+            log_message('info', "Inventory location mismatch recorded: {$itemType} {$itemCode} at {$zoneId}");
+
+            return [
+                'success'           => true,
+                'message'           => 'Location mismatch: ' . $itemName . ' in ' . ($zone['zone_name'] ?? $zoneId),
+                'action'            => 'location_mismatch',
+                'location_mismatch' => true,
+                $responseKey        => $itemPayload,
+                'zone'              => $zonePayload,
+                'time'              => $time,
+            ];
         }
 
         log_message('info', "Inventory zone IN: {$itemType} {$itemCode} at {$zoneId}");

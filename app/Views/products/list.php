@@ -144,7 +144,7 @@
                                         <button type="button"
                                                 onclick="openEpcAssignModal(<?= (int) $p['id'] ?>, <?= json_encode($p['product_name']) ?>)"
                                                 class="p-1.5 rounded-lg text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                                                title="<?= !empty($p['epc_no']) ? 'Change UHF tag' : 'Assign UHF tag' ?>">
+                                                title="Manage UHF tags (assign or remove)">
                                             <span class="material-symbols-outlined text-base">rss_feed</span>
                                         </button>
                                         <a href="<?= base_url('products/view/' . $p['id']) ?>" class="p-1.5 rounded-lg text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="View">

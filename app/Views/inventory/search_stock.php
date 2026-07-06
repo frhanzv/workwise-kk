@@ -11,7 +11,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Search Stock</h1>
             <p class="text-sm text-gray-500 dark:text-gray-400">Scan a UHF tag or batch QR code to view item details and stock.</p>
         </div>
-        <a href="<?= base_url('inventory/monitoring') ?>" class="text-sm text-primary hover:underline">← Inventory Dashboard</a>
+        <a href="<?= base_url('inventory/monitoring') ?>" class="text-sm text-primary hover:underline">← Inventory Monitoring</a>
     </div>
 
     <div class="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-sm text-blue-900 dark:text-blue-100 space-y-2">
@@ -62,10 +62,11 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
                     <p id="res-desc" class="text-sm text-gray-600 dark:text-gray-300 mt-2 hidden"></p>
                 </div>
                 <div class="text-right space-y-1">
-                    <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Balance</p>
+                    <p id="res-balance-label" class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Balance</p>
                     <p id="res-balance" class="text-3xl font-bold text-primary">0</p>
                     <p id="res-unit" class="text-xs text-gray-500 dark:text-gray-400">—</p>
                     <p id="res-stock-detail" class="text-xs mt-1 hidden"></p>
+                    <p id="res-product-total" class="text-xs text-gray-500 dark:text-gray-400 mt-1 hidden"></p>
                 </div>
             </div>
 
@@ -74,22 +75,22 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
             <div class="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <a id="res-view-link" href="#" class="text-sm text-primary hover:underline">View master record →</a>
-                <a id="res-edit-link" href="#" class="text-sm text-gray-500 hover:underline">Edit</a>
+                <a id="res-edit-link" href="#" class="text-sm text-gray-500 dark:text-gray-400 hover:underline">Edit</a>
             </div>
         </div>
 
         <!-- Stock summary -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-                <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Stock In</p>
+                <p id="res-summary-1-label" class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Stock In</p>
                 <p id="res-total-in" class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">0</p>
             </div>
             <div class="bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-                <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Stock Out</p>
+                <p id="res-summary-2-label" class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Stock Out</p>
                 <p id="res-total-out" class="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">0</p>
             </div>
             <div class="bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-                <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</p>
+                <p id="res-summary-3-label" class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</p>
                 <p id="res-balance-2" class="text-2xl font-bold text-primary mt-1">0</p>
             </div>
         </div>
@@ -102,9 +103,9 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
         <!-- Tags -->
         <div id="tags-section" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 class="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">UHF Tags</h3>
+            <h3 id="tags-section-title" class="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">UHF Tags</h3>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-sm text-gray-900 dark:text-gray-100">
                     <thead>
                         <tr class="text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                             <th class="pb-2 pr-4">EPC</th>
@@ -122,7 +123,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
         <div id="zone-section" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <h3 class="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">Zone Activity — Today</h3>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-sm text-gray-900 dark:text-gray-100">
                     <thead>
                         <tr class="text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                             <th class="pb-2 pr-4">Zone</th>
@@ -142,7 +143,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
         <div id="txn-section" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <h3 class="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">Recent Stock Movements</h3>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-sm text-gray-900 dark:text-gray-100">
                     <thead>
                         <tr class="text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                             <th class="pb-2 pr-4">Date</th>
@@ -243,6 +244,7 @@ function renderStockStatus(status) {
     badge.classList.remove('hidden');
     if (status.detail) {
         detail.textContent = status.detail;
+        detail.className = 'text-xs mt-1 text-gray-600 dark:text-gray-300';
         detail.classList.remove('hidden');
     } else {
         detail.classList.add('hidden');
@@ -255,16 +257,41 @@ function renderResult(data) {
 
     const item = data.item || {};
     const summary = data.stock_summary || {};
+    const tagScoped = !!data.scoped_to_tag;
+    const productSummary = data.product_stock_summary || null;
+
+    document.getElementById('res-balance-label').textContent = tagScoped ? 'Tag Balance' : 'Balance';
+    document.getElementById('res-summary-1-label').textContent = tagScoped ? 'Registered Qty' : 'Total Stock In';
+    document.getElementById('res-summary-2-label').textContent = tagScoped ? 'Qty OUT' : 'Total Stock Out';
+    document.getElementById('res-summary-3-label').textContent = tagScoped ? 'Tag Balance' : 'Current Balance';
+    document.getElementById('tags-section-title').textContent = tagScoped ? 'Scanned Tag' : 'UHF Tags';
 
     document.getElementById('res-type-badge').textContent = data.type_label || 'Item';
     renderStockStatus(data.stock_status);
     document.getElementById('res-name').textContent = item.name || '—';
     document.getElementById('res-code').textContent = item.code || '—';
+
+    if (tagScoped) {
+        document.getElementById('res-total-in').textContent = summary.registered_qty_fmt || formatQty(summary.registered_qty ?? 0);
+        document.getElementById('res-total-out').textContent = summary.total_stock_out_fmt || '0';
+        document.getElementById('res-total-in').className = 'text-2xl font-bold text-gray-900 dark:text-white mt-1';
+    } else {
+        document.getElementById('res-total-in').textContent = summary.total_stock_in_fmt || '0';
+        document.getElementById('res-total-out').textContent = summary.total_stock_out_fmt || '0';
+        document.getElementById('res-total-in').className = 'text-2xl font-bold text-green-600 dark:text-green-400 mt-1';
+    }
+
     document.getElementById('res-balance').textContent = formatQty(summary.balance ?? item.balance ?? 0);
     document.getElementById('res-balance-2').textContent = formatQty(summary.balance ?? item.balance ?? 0);
-    document.getElementById('res-total-in').textContent = summary.total_stock_in_fmt || '0';
-    document.getElementById('res-total-out').textContent = summary.total_stock_out_fmt || '0';
     document.getElementById('res-unit').textContent = item.unit ? 'Unit: ' + item.unit : '';
+
+    const productTotalEl = document.getElementById('res-product-total');
+    if (tagScoped && productSummary) {
+        productTotalEl.textContent = 'Product total (all tags): ' + (productSummary.balance_fmt || formatQty(productSummary.balance ?? 0));
+        productTotalEl.classList.remove('hidden');
+    } else {
+        productTotalEl.classList.add('hidden');
+    }
 
     const descEl = document.getElementById('res-desc');
     if (item.description) {
@@ -289,7 +316,7 @@ function renderResult(data) {
     if (data.scanned_tag) {
         const t = data.scanned_tag;
         scannedEl.innerHTML = '<strong>Scanned tag:</strong> ' + escapeHtml(t.epc_no || '') +
-            ' — current qty <strong>' + formatQty(t.tag_quantity) + '</strong>, registered qty <strong>' + formatQty(t.tag_registered_quantity) + '</strong>';
+            ' — qty <strong>' + formatQty(t.tag_display_quantity ?? t.tag_quantity) + '</strong>, registered qty <strong>' + formatQty(t.tag_registered_quantity) + '</strong>';
         scannedEl.classList.remove('hidden');
     } else if (data.scanned_epc) {
         scannedEl.innerHTML = '<strong>Scanned EPC:</strong> ' + escapeHtml(data.scanned_epc) + ' (legacy item EPC, not in tag table)';
@@ -311,11 +338,12 @@ function renderResult(data) {
         tagsSection.classList.remove('hidden');
         tagsBody.innerHTML = tags.map(t => {
             const highlight = data.scanned_epc && t.epc_no && t.epc_no.toUpperCase() === data.scanned_epc.toUpperCase();
-            return '<tr class="' + (highlight ? 'bg-amber-50 dark:bg-amber-900/10' : '') + '">' +
-                '<td class="py-2 pr-4 font-mono text-xs">' + escapeHtml(t.epc_no || '') + '</td>' +
-                '<td class="py-2 pr-4">' + formatQty(t.tag_quantity) + '</td>' +
-                '<td class="py-2 pr-4">' + formatQty(t.tag_registered_quantity) + '</td>' +
-                '<td class="py-2">' + escapeHtml(t.tag_label || '—') + '</td></tr>';
+            const displayQty = t.tag_display_quantity ?? t.tag_quantity ?? 0;
+            return '<tr class="' + (highlight ? 'bg-amber-50 dark:bg-amber-900/20' : '') + '">' +
+                '<td class="' + tableCellMono + '">' + escapeHtml(t.epc_no || '') + '</td>' +
+                '<td class="' + tableCell + '">' + formatQty(displayQty) + '</td>' +
+                '<td class="' + tableCell + '">' + formatQty(t.tag_registered_quantity) + '</td>' +
+                '<td class="' + tableCellLast + '">' + escapeHtml(t.tag_label || '—') + '</td></tr>';
         }).join('');
     } else {
         tagsSection.classList.add('hidden');
@@ -329,13 +357,13 @@ function renderResult(data) {
         zonesBody.innerHTML = zones.map(z => {
             const badge = z.status === 'IN'
                 ? '<span class="text-green-600 dark:text-green-400 font-bold">IN</span>'
-                : '<span class="text-gray-500">OUT</span>';
-            return '<tr><td class="py-2 pr-4">' + escapeHtml(z.zone_name) + '</td>' +
-                '<td class="py-2 pr-4 font-mono text-xs">' + escapeHtml(z.tag_epc || '—') + '</td>' +
-                '<td class="py-2 pr-4">' + badge + '</td>' +
-                '<td class="py-2 pr-4">' + escapeHtml(z.time_in) + '</td>' +
-                '<td class="py-2 pr-4">' + escapeHtml(z.time_out) + '</td>' +
-                '<td class="py-2">' + escapeHtml(z.duration) + '</td></tr>';
+                : '<span class="text-gray-500 dark:text-gray-400">OUT</span>';
+            return '<tr><td class="' + tableCell + '">' + escapeHtml(z.zone_name) + '</td>' +
+                '<td class="' + tableCellMono + '">' + escapeHtml(z.tag_epc || '—') + '</td>' +
+                '<td class="' + tableCell + '">' + badge + '</td>' +
+                '<td class="' + tableCell + '">' + escapeHtml(z.time_in) + '</td>' +
+                '<td class="' + tableCell + '">' + escapeHtml(z.time_out) + '</td>' +
+                '<td class="' + tableCellLast + '">' + escapeHtml(z.duration) + '</td></tr>';
         }).join('');
     } else {
         zoneSection.classList.add('hidden');
@@ -347,11 +375,11 @@ function renderResult(data) {
     if (txns.length) {
         txnSection.classList.remove('hidden');
         txnsBody.innerHTML = txns.map(t =>
-            '<tr><td class="py-2 pr-4 whitespace-nowrap">' + escapeHtml(t.datetime || t.created_at || '') + '</td>' +
-            '<td class="py-2 pr-4">' + escapeHtml(t.transaction_label || t.transaction_type || '') + '</td>' +
-            '<td class="py-2 pr-4 font-medium">' + formatQty(t.quantity) + '</td>' +
-            '<td class="py-2 pr-4">' + escapeHtml(t.scan_method || '—') + '</td>' +
-            '<td class="py-2">' + escapeHtml(t.notes || '—') + '</td></tr>'
+            '<tr><td class="' + tableCell + ' whitespace-nowrap">' + escapeHtml(t.datetime || t.created_at || '') + '</td>' +
+            '<td class="' + tableCell + '">' + escapeHtml(t.transaction_label || t.transaction_type || '') + '</td>' +
+            '<td class="' + tableCell + ' font-medium">' + formatQty(t.quantity) + '</td>' +
+            '<td class="' + tableCell + '">' + escapeHtml(t.scan_method || '—') + '</td>' +
+            '<td class="' + tableCellLast + '">' + escapeHtml(t.notes || '—') + '</td></tr>'
         ).join('');
     } else {
         txnSection.classList.add('hidden');
@@ -361,6 +389,10 @@ function renderResult(data) {
 function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+const tableCell = 'py-2 pr-4 text-gray-900 dark:text-gray-100';
+const tableCellMono = 'py-2 pr-4 font-mono text-xs text-gray-800 dark:text-gray-200';
+const tableCellLast = 'py-2 text-gray-900 dark:text-gray-100';
 
 document.getElementById('scan_epc').addEventListener('input', function () {
     if (this.value.trim()) document.getElementById('scan_qr').value = '';

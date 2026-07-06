@@ -59,7 +59,7 @@
                         <th class="px-6 py-4 font-semibold" scope="col">Zone Location</th>
                         <th class="px-6 py-4 font-semibold" scope="col">Antenna Mode</th>
                         <th class="px-6 py-4 font-semibold" scope="col">IP Address</th>
-                        <th class="px-6 py-4 font-semibold" scope="col">IN/OUT Function</th>
+                        <th class="px-6 py-4 font-semibold" scope="col">Antenna Function</th>
                         <th class="px-6 py-4 font-semibold text-right" scope="col">Actions</th>
                     </tr>
                 </thead>

@@ -1,27 +1,32 @@
 <!-- Global Stock Finder (floating — available on every page) -->
-<div id="stock-finder-btn" class="fixed bottom-28 right-6 z-50">
+<?php
+$widgetConfig = config('Widgets');
+$btn = $widgetConfig->floatingButtonClasses();
+$panel = $widgetConfig->panelDimensions();
+?>
+<div id="stock-finder-btn" class="fixed bottom-28 right-6 z-50" data-default-bottom="112" data-default-right="24">
     <button
         type="button"
         onclick="openStockFinder()"
-        class="flex items-center gap-3 bg-gradient-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-5 py-3.5 rounded-full shadow-2xl hover:shadow-primary/40 transition-all duration-300 transform hover:scale-105">
-        <span class="material-symbols-outlined text-xl">inventory_2</span>
-        <span class="font-semibold hidden sm:inline text-sm">Find Stock</span>
-        <span class="relative flex h-2.5 w-2.5">
+        class="flex items-center <?= esc($btn['btn']) ?> bg-gradient-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-2xl hover:shadow-primary/40 transition-all duration-300 transform hover:scale-105">
+        <span class="material-symbols-outlined <?= esc($btn['icon']) ?>">inventory_2</span>
+        <span class="font-semibold hidden sm:inline <?= esc($btn['text']) ?>">Find Stock</span>
+        <span class="relative flex <?= esc($btn['dot']) ?>">
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+            <span class="relative inline-flex rounded-full h-full w-full bg-white"></span>
         </span>
     </button>
 </div>
 
-<div id="stock-finder-panel" class="hidden fixed z-[60] w-[min(100vw-2rem,420px)] bg-white dark:bg-background-dark shadow-2xl rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col"
-     style="bottom: 24px; right: 24px; max-height: min(85vh, 640px);">
+<div id="stock-finder-panel" class="hidden fixed z-[60] bg-white dark:bg-background-dark shadow-2xl rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col"
+     style="bottom: 24px; right: 24px; width: min(100vw - 2rem, <?= esc($panel['width']) ?>); max-height: min(85vh, <?= esc($panel['maxHeight']) ?>);">
 
-    <div class="bg-gradient-to-r from-primary to-blue-600 px-4 py-3 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-2">
+    <div id="stock-finder-drag-handle" class="bg-gradient-to-r from-primary to-blue-600 px-4 py-3 flex items-center justify-between shrink-0 select-none">
+        <div class="flex items-center gap-2 pointer-events-none">
             <span class="material-symbols-outlined text-white text-xl">inventory_2</span>
             <div>
                 <h3 class="text-white font-bold text-sm">Find Stock</h3>
-                <p class="text-blue-100 text-[10px]">Tag · Batch · Item name</p>
+                <p class="text-blue-100 text-[10px]"><?= $widgetConfig->panelsMoveable ? 'Drag to move · ' : '' ?>Tag · Batch · Item name</p>
             </div>
         </div>
         <button type="button" onclick="closeStockFinder()" class="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close">
@@ -154,6 +159,13 @@
             '<p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">' + header + '</p>' +
             tags.map(t => {
                 const hi = t.highlighted || (highlightEpc && t.epc_no && t.epc_no.toUpperCase() === highlightEpc.toUpperCase());
+                const displayQty = t.display_quantity ?? t.quantity ?? 0;
+                const currentQty = t.quantity ?? 0;
+                const regQty = t.registered_quantity ?? 0;
+                let qtySub = 'reg ' + fmtQty(regQty);
+                if (Math.abs(currentQty - displayQty) > 0.0001) {
+                    qtySub = 'current ' + fmtQty(currentQty) + ' · reg ' + fmtQty(regQty);
+                }
                 return '<div class="flex items-start justify-between gap-2 p-2 rounded-lg text-xs ' +
                     (hi ? 'bg-primary/10 border border-primary/30' : 'bg-gray-50 dark:bg-gray-800/60') + '">' +
                     '<div class="min-w-0 flex-1">' +
@@ -162,8 +174,8 @@
                     tagLocationBlock(t.location) +
                     '</div>' +
                     '<div class="text-right shrink-0">' +
-                    '<p class="font-bold text-gray-900 dark:text-white tabular-nums">' + fmtQty(t.quantity) + '</p>' +
-                    '<p class="text-[9px] text-gray-500">reg ' + fmtQty(t.registered_quantity) + '</p>' +
+                    '<p class="font-bold text-gray-900 dark:text-white tabular-nums">' + fmtQty(displayQty) + '</p>' +
+                    '<p class="text-[9px] text-gray-500">' + qtySub + '</p>' +
                     '</div></div>';
             }).join('') + '</div>';
     }
@@ -259,6 +271,12 @@
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !document.getElementById('stock-finder-panel').classList.contains('hidden')) {
             closeStockFinder();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.WWFloatingWidgets) {
+            WWFloatingWidgets.initPanelDrag('stock-finder-panel', '#stock-finder-drag-handle');
         }
     });
 })();

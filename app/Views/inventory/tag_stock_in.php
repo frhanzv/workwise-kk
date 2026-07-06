@@ -30,6 +30,27 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
     <div id="alert" class="hidden p-4 rounded-lg text-sm border"></div>
 
+    <div class="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-sm text-blue-900 dark:text-blue-100 space-y-2">
+        <p><strong>Lookup desk scanning (products &amp; raw materials only):</strong></p>
+        <ul class="list-disc pl-5 space-y-1 text-blue-800 dark:text-blue-200">
+            <li>Set the desk antenna to <strong>LOOKUP</strong> in Zones — never IN/OUT here.</li>
+            <li><strong>Step 2</strong> — scan fills the EPC only (no stock in/out).</li>
+            <li><strong>Step 3</strong> — scan the same tag again to confirm stock in. Location comes from the reader zone automatically.</li>
+            <li>Warehouse IN/OUT gates are unchanged. Staff/worker tags are not affected by this page.</li>
+        </ul>
+    </div>
+
+    <div id="listen-banner" class="hidden flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20">
+        <div class="flex items-center gap-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+            <div>
+                <p class="text-sm font-bold text-indigo-900 dark:text-indigo-100">Listening for lookup-desk RFID scans</p>
+                <p class="text-xs text-indigo-700 dark:text-indigo-300">Scans fill EPC automatically — no stock change until step 3 confirm</p>
+            </div>
+        </div>
+        <span id="listen-time" class="text-xs text-indigo-600 dark:text-indigo-400 tabular-nums"></span>
+    </div>
+
     <!-- STEP 1: Select product / raw material -->
     <div id="step-1" class="bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-5">
         <div>
@@ -62,7 +83,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
     <div id="step-2" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-5">
         <div>
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">Tagging with Qty</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Scan the UHF tag, then set <strong>registered qty</strong> for this tag (max capacity).</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Scan at the <strong>lookup desk</strong> to capture the UHF tag, then set registered qty (no stock in yet).</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -112,7 +133,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
     <div id="step-3" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-5">
         <div>
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">Stock In</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Enter how many to stock in, then scan the <strong>same tag</strong> to confirm.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Set stock in qty, then scan the <strong>same tag</strong> at the lookup desk to confirm. Storage zone is taken from the reader.</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -145,12 +166,10 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
             </div>
 
             <div class="space-y-4">
-                <div class="space-y-1.5">
-                    <label class="<?= $labelClass ?>" for="storage_zone_id">Storage location</label>
-                    <select id="storage_zone_id" class="<?= $inputClass ?>">
-                        <option value="">Select where item is stored…</option>
-                    </select>
-                    <p id="storage-zone-hint" class="text-[11px] text-gray-500 dark:text-gray-400">Only zones allowed for this item are listed.</p>
+                <div class="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 space-y-1">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Storage location (from RFID scan)</p>
+                    <p id="confirm-zone" class="text-sm font-bold text-amber-700 dark:text-amber-300">— scan at lookup desk —</p>
+                    <p class="text-[11px] text-gray-500 dark:text-gray-400">Zone is set when you scan on step 2 or 3. No manual selection needed.</p>
                 </div>
                 <div class="space-y-1.5">
                     <label class="<?= $labelClass ?>" for="stock_in_qty">Stock in quantity</label>
@@ -159,7 +178,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
                 </div>
                 <div class="space-y-1.5">
                     <label class="<?= $labelClass ?>" for="epc_confirm">Scan same UHF EPC to confirm</label>
-                    <input type="text" id="epc_confirm" class="<?= $inputClass ?> font-mono uppercase text-lg tracking-wide" placeholder="Scan same tag to confirm…" autocomplete="off"/>
+                    <input type="text" id="epc_confirm" class="<?= $inputClass ?> font-mono uppercase text-lg tracking-wide" placeholder="Scan same tag at lookup desk…" autocomplete="off"/>
                 </div>
             </div>
         </div>
@@ -193,13 +212,12 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
 <script>
 const items = <?= json_encode($items ?? [], JSON_UNESCAPED_UNICODE) ?>;
-const allZones = <?= json_encode($zones ?? [], JSON_UNESCAPED_UNICODE) ?>;
-const itemMap = Object.fromEntries(items.map(i => [i.type + ':' + i.id, i]));
 const csrfName = <?= json_encode(csrf_token()) ?>;
 const csrfHash = <?= json_encode(csrf_hash()) ?>;
 const itemUrl = <?= json_encode(base_url('inventory/tag-stock-in/item')) ?>;
 const previewUrl = <?= json_encode(base_url('inventory/tag-stock-in/preview')) ?>;
 const submitUrl = <?= json_encode(base_url('inventory/tag-stock-in/submit')) ?>;
+const scansUrl = <?= json_encode(base_url('inventory/search-stock/scans')) ?>;
 
 let currentStep = 1;
 let itemFilter = 'all';
@@ -207,6 +225,11 @@ let selectedKey = null;
 let selectedItem = null;
 let pending = null;
 let busy = false;
+let lastScanZone = null;
+let lastPollTs = Date.now() / 1000;
+let pollTimer = null;
+const seenScanIds = new Set();
+const itemMap = Object.fromEntries(items.map(i => [i.type + ':' + i.id, i]));
 
 function formatQty(n) {
     const v = Number(n) || 0;
@@ -258,6 +281,14 @@ function showStep(step) {
     ['step-1', 'step-2', 'step-3', 'step-done'].forEach(id => {
         document.getElementById(id).classList.add('hidden');
     });
+    const listenBanner = document.getElementById('listen-banner');
+    if (step === 2 || step === 3) {
+        listenBanner.classList.remove('hidden');
+        startListenPoll();
+    } else {
+        listenBanner.classList.add('hidden');
+        stopListenPoll();
+    }
     if (step === 'done') {
         document.getElementById('step-done').classList.remove('hidden');
         setProgress(3);
@@ -267,6 +298,79 @@ function showStep(step) {
     }
     document.getElementById('step-' + step).classList.remove('hidden');
     setProgress(step);
+}
+
+function applyScanZone(scan) {
+    if (!scan?.zone_id) return;
+    lastScanZone = {
+        zone_id: scan.zone_id,
+        zone_name: scan.zone_name || scan.zone_id,
+    };
+    if (pending) {
+        pending.scan_zone_id = lastScanZone.zone_id;
+        pending.scan_zone_name = lastScanZone.zone_name;
+    }
+    paintScanZone();
+}
+
+function paintScanZone() {
+    const el = document.getElementById('confirm-zone');
+    if (!el) return;
+    const zone = pending?.scan_zone_name || lastScanZone?.zone_name;
+    el.textContent = zone || '— scan at lookup desk —';
+}
+
+function stopListenPoll() {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+}
+
+function startListenPoll() {
+    stopListenPoll();
+    const tick = () => {
+        document.getElementById('listen-time').textContent = 'Updated ' + new Date().toLocaleTimeString();
+        pollLookupScans();
+    };
+    pollTimer = setInterval(tick, 1200);
+    tick();
+}
+
+async function pollLookupScans() {
+    if (currentStep !== 2 && currentStep !== 3) return;
+    try {
+        const res = await fetch(scansUrl + '?since=' + encodeURIComponent(lastPollTs), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store',
+        });
+        const data = await res.json();
+        if (!data.success || !data.scans?.length) return;
+
+        for (const scan of data.scans) {
+            if (seenScanIds.has(scan.id)) continue;
+            seenScanIds.add(scan.id);
+            lastPollTs = Math.max(lastPollTs, scan.ts || lastPollTs);
+            applyScanZone(scan);
+
+            if (currentStep === 2) {
+                document.getElementById('epc_scan').value = scan.epc || '';
+                await stageTag();
+                continue;
+            }
+
+            if (currentStep === 3 && pending) {
+                document.getElementById('epc_confirm').value = scan.epc || '';
+                if ((scan.epc || '').toUpperCase() === pending.epc_no) {
+                    await confirmStockIn();
+                } else {
+                    showAlert('Tag does not match. Scan ' + pending.epc_no + ' to confirm.', 'error');
+                }
+            }
+        }
+    } catch (e) {
+        // retry on next poll
+    }
 }
 
 function setItemFilter(filter) {
@@ -422,6 +526,8 @@ async function stageTag() {
             registered_qty: data.registered_qty,
             current_qty: data.current_qty,
             max_stock_in: data.max_stock_in,
+            scan_zone_id: lastScanZone?.zone_id || null,
+            scan_zone_name: lastScanZone?.zone_name || null,
         };
 
         document.getElementById('qty-preview').classList.remove('hidden');
@@ -436,36 +542,6 @@ async function stageTag() {
     } finally {
         busy = false;
     }
-}
-
-function populateStorageZones() {
-    const select = document.getElementById('storage_zone_id');
-    const hint = document.getElementById('storage-zone-hint');
-    select.innerHTML = '<option value="">Select where item is stored…</option>';
-
-    if (!selectedItem) return;
-
-    let zones = allZones;
-    if (!selectedItem.allows_all_zones && (selectedItem.allowed_zone_ids || []).length) {
-        const allowed = new Set(selectedItem.allowed_zone_ids);
-        zones = allZones.filter(z => allowed.has(z.zone_id));
-    }
-
-    if (!zones.length) {
-        hint.textContent = 'No allowed zones configured for this item. Update Allowed Zones on the master list.';
-        return;
-    }
-
-    hint.textContent = selectedItem.allows_all_zones
-        ? 'All zones allowed for this item.'
-        : 'Only zones allowed for this item are listed.';
-
-    zones.forEach(z => {
-        const opt = document.createElement('option');
-        opt.value = z.zone_id;
-        opt.textContent = z.zone_name;
-        select.appendChild(opt);
-    });
 }
 
 function goStep3() {
@@ -498,13 +574,14 @@ function goStep3() {
         : 'Tag already at registered qty — increase registered on previous step if needed.';
 
     document.getElementById('epc_confirm').value = '';
-    populateStorageZones();
+    paintScanZone();
     showStep(3);
-    document.getElementById('storage_zone_id').focus();
+    document.getElementById('epc_confirm').focus();
 }
 
 function goStep1() {
     pending = null;
+    lastScanZone = null;
     showStep(1);
 }
 
@@ -548,10 +625,9 @@ async function confirmStockIn() {
         return;
     }
 
-    const storageZoneId = document.getElementById('storage_zone_id').value.trim();
+    const storageZoneId = (pending.scan_zone_id || lastScanZone?.zone_id || '').trim();
     if (!storageZoneId) {
-        showAlert('Select a storage location.', 'error');
-        document.getElementById('storage_zone_id').focus();
+        showAlert('Scan at the lookup desk (LOOKUP antenna) to set storage location.', 'error');
         return;
     }
 
@@ -606,6 +682,7 @@ function startOver() {
     selectedKey = null;
     selectedItem = null;
     pending = null;
+    lastScanZone = null;
     document.getElementById('btn-next-1').disabled = true;
     document.getElementById('item_search').value = '';
     document.getElementById('epc_scan').value = '';
@@ -640,6 +717,14 @@ document.getElementById('epc_scan').addEventListener('change', stageTag);
 
 renderItemList();
 showStep(1);
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopListenPoll();
+    } else if (currentStep === 2 || currentStep === 3) {
+        startListenPoll();
+    }
+});
 </script>
 
 <?= $this->include('templates/footer') ?>

@@ -61,7 +61,7 @@ $title = $title ?? 'Dashboard';
 <body class="font-display bg-background-light dark:bg-background-dark overflow-hidden">
 <div class="relative flex h-screen w-full flex-col group/design-root">
     <!-- Mobile/Tablet Header with Workwise Branding -->
-    <div class="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white dark:bg-background-dark border-b border-gray-200 dark:border-gray-700 px-3 py-2.5 flex items-center justify-between">
+    <div id="app-mobile-header" class="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white dark:bg-background-dark border-b border-gray-200 dark:border-gray-700 px-3 py-2.5 flex items-center justify-between">
         <button id="mobile-menu-btn" class="p-2 rounded-lg bg-primary shadow-md hover:bg-primary/90" onclick="toggleMobileMenu()">
             <span class="material-symbols-outlined text-lg text-white">menu</span>
         </button>
@@ -120,8 +120,8 @@ $title = $title ?? 'Dashboard';
                     $isSearchStock = (strpos($currentUrl, 'inventory/search-stock') !== false);
                     $isProducts = (strpos($currentUrl, 'products') !== false);
                     $isRawMaterials = (strpos($currentUrl, 'raw-materials') !== false);
-                    $isInventory = $isProducts || $isRawMaterials || $isStockCheck || $isStockLedger || $isLocationMismatch || $isTagStockIn || $isSearchStock;
-                    $isDashboard = $isDashboardOverview || $isInventoryMonitoring;
+                    $isInventory = $isProducts || $isRawMaterials || $isInventoryMonitoring || $isStockCheck || $isLocationMismatch || $isTagStockIn || $isSearchStock;
+                    $isDashboard = $isDashboardOverview || $isStockLedger;
                     $showProduction = false; // set true to re-enable Production nav
                     $isProduction = $showProduction && (strpos($currentUrl, 'production') !== false);
                     ?>
@@ -136,7 +136,7 @@ $title = $title ?? 'Dashboard';
                                 <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isDashboardOverview ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('dashboard') ?>">
                                     <p class="text-xs font-medium leading-normal">Productivity Dashboard</p>
                                 </a>
-                                <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isInventoryMonitoring ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('inventory/monitoring') ?>">
+                                <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isStockLedger ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('inventory/stock-ledger') ?>">
                                     <p class="text-xs font-medium leading-normal">Inventory Dashboard</p>
                                 </a>
                             </div>
@@ -184,6 +184,9 @@ $title = $title ?? 'Dashboard';
                                 <span id="inventory-arrow" class="material-symbols-outlined text-sm transition-transform <?= $isInventory ? 'text-primary dark:text-white rotate-180' : '' ?>">keyboard_arrow_down</span>
                             </button>
                             <div id="inventory-submenu" class="flex flex-col pl-5 mt-1 gap-1 <?= $isInventory ? '' : 'hidden' ?>">
+                                <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isInventoryMonitoring ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('inventory/monitoring') ?>">
+                                    <p class="text-xs font-medium leading-normal">Inventory Monitoring</p>
+                                </a>
                                 <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isProducts ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('products/list') ?>">
                                     <p class="text-xs font-medium leading-normal">Product Master List</p>
                                 </a>
@@ -198,9 +201,6 @@ $title = $title ?? 'Dashboard';
                                 </a>
                                 <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isStockCheck ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('inventory/stock-check') ?>">
                                     <p class="text-xs font-medium leading-normal">Stock Check</p>
-                                </a>
-                                <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isStockLedger ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('inventory/stock-ledger') ?>">
-                                    <p class="text-xs font-medium leading-normal">Stock Ledger</p>
                                 </a>
                                 <a class="flex items-center gap-2 px-2 py-1 rounded-lg <?= $isLocationMismatch ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' ?>" href="<?= base_url('inventory/location-mismatch') ?>">
                                     <p class="text-xs font-medium leading-normal">Location Mismatch</p>

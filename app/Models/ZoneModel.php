@@ -67,44 +67,58 @@ class ZoneModel extends Model
     public function getZoneFunction($zoneId)
     {
         $zoneAntennaModel = new \App\Models\ZoneAntennaModel();
-        $antennas = $zoneAntennaModel->getZoneAntennas($zoneId);
-        
-        // If no antennas in zone_antennas table, fall back to zone table
+        $antennas         = $zoneAntennaModel->getZoneAntennas($zoneId);
+        $zone             = $this->where('zone_id', $zoneId)->first();
+        $zoneFunction     = strtoupper(trim((string) ($zone['function'] ?? '')));
+
         if (empty($antennas)) {
-            $zone = $this->where('zone_id', $zoneId)->first();
             return $zone['function'] ?? 'IN / OUT';
         }
-        
-        // Check all antenna functions
-        $hasIn = false;
-        $hasOut = false;
-        
+
+        $hasIn      = false;
+        $hasOut     = false;
+        $hasLookup  = false;
+        $hasAnyFunc = false;
+
         foreach ($antennas as $antenna) {
-            $function = strtoupper(trim($antenna['function'] ?? 'IN / OUT'));
+            $function = strtoupper(trim((string) ($antenna['function'] ?? '')));
+            if ($function === '') {
+                continue;
+            }
+
+            $hasAnyFunc = true;
 
             if ($function === 'LOOKUP') {
-                return 'LOOKUP';
+                $hasLookup = true;
+                continue;
             }
-            
-            // Check if function contains IN
+
             if (strpos($function, 'IN') !== false) {
                 $hasIn = true;
             }
-            // Check if function contains OUT
             if (strpos($function, 'OUT') !== false) {
                 $hasOut = true;
             }
         }
-        
-        // Determine overall function
+
+        if ($hasLookup) {
+            return 'LOOKUP';
+        }
+
+        if (!$hasAnyFunc && $zoneFunction === 'LOOKUP') {
+            return 'LOOKUP';
+        }
+
         if ($hasIn && $hasOut) {
             return 'IN / OUT';
-        } elseif ($hasIn) {
+        }
+        if ($hasIn) {
             return 'IN ONLY';
-        } elseif ($hasOut) {
+        }
+        if ($hasOut) {
             return 'OUT ONLY';
         }
-        
-        return 'IN / OUT'; // Default
+
+        return $zone['function'] ?? 'IN / OUT';
     }
 }

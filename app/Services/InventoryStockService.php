@@ -169,6 +169,7 @@ class InventoryStockService
                 'tag_id'              => $tid,
                 'epc_no'              => $tag['epc_no'] ?? '',
                 'quantity'            => $qty,
+                'display_quantity'    => $this->tagDisplayQuantity($tag),
                 'registered_quantity' => normalize_inventory_qty((float) ($tag['default_quantity'] ?? $tag['quantity'] ?? 0)),
                 'location'            => $this->resolveItemLocation($type, $id, $tid),
                 'highlighted'         => $highlightEpc !== '' && strcasecmp($tag['epc_no'] ?? '', $highlightEpc) === 0,
@@ -671,7 +672,7 @@ class InventoryStockService
         $tagId = (int) ($tag['tag_id'] ?? 0);
         $storageZoneName = null;
         if ($storageZoneId !== null && trim($storageZoneId) !== '' && $tagId > 0) {
-            $storageZoneName = $this->recordManualStorageLocation($itemType, $itemId, $tagId, trim($storageZoneId));
+            $storageZoneName = $this->recordTagStockInLocation($itemType, $itemId, $tagId, trim($storageZoneId));
         }
 
         return [
@@ -685,6 +686,23 @@ class InventoryStockService
             'storage_zone_id'    => $storageZoneId,
             'storage_zone_name'  => $storageZoneName,
         ];
+    }
+
+    /**
+     * Put-away at lookup desk after Tag + Stock In (zone from RFID reader, no allowlist gate).
+     */
+    public function recordTagStockInLocation(
+        string $itemType,
+        int $itemId,
+        int $tagId,
+        string $zoneId
+    ): string {
+        $zone = (new ZoneModel())->where('zone_id', $zoneId)->where('status', 'active')->first();
+        if (!$zone) {
+            throw new \RuntimeException('Invalid storage location from RFID scan.');
+        }
+
+        return $this->applyTagZonePresence($itemType, $itemId, $tagId, $zoneId, $zone['zone_name'] ?? $zoneId);
     }
 
     /**
@@ -706,6 +724,16 @@ class InventoryStockService
             throw new \RuntimeException('This item is not allowed in the selected zone.');
         }
 
+        return $this->applyTagZonePresence($itemType, $itemId, $tagId, $zoneId, $zone['zone_name'] ?? $zoneId);
+    }
+
+    private function applyTagZonePresence(
+        string $itemType,
+        int $itemId,
+        int $tagId,
+        string $zoneId,
+        string $zoneName
+    ): string {
         $now         = date('Y-m-d H:i:s');
         $today       = date('Y-m-d');
         $recordModel = new InventoryZoneRecordModel();
@@ -733,7 +761,7 @@ class InventoryStockService
         $itemModel->updateLastSeen($itemId, $zoneId);
         (new InventoryItemTagModel())->updateLastSeen($tagId, $zoneId);
 
-        return $zone['zone_name'] ?? $zoneId;
+        return $zoneName;
     }
 
     /**
@@ -1008,6 +1036,7 @@ class InventoryStockService
         return array_merge($base, [
             'tag_id'                  => (int) $tag['id'],
             'tag_quantity'            => normalize_inventory_qty((float) ($tag['quantity'] ?? 0)),
+            'tag_display_quantity'    => $this->tagDisplayQuantity($tag),
             'tag_registered_quantity' => normalize_inventory_qty((float) ($tag['default_quantity'] ?? $tag['quantity'] ?? 0)),
             'tag_label'               => $tag['label'] ?? '',
             'epc_no'                  => $tag['epc_no'],
@@ -1131,12 +1160,15 @@ class InventoryStockService
         ]);
 
         $sessionId = (int) $sessionModel->getInsertID();
+        $tagReport = $this->buildStockCheckTagReport($itemType, $itemId, $sessionId, $scanMethod);
 
         return [
             'session_id'       => $sessionId,
             'item'             => $this->formatItemPayload($itemType, $item),
             'expected_balance' => (float) ($item['quantity_on_hand'] ?? 0),
             'scan_method'      => $scanMethod,
+            'expected_tags'    => $tagReport['expected_tags'],
+            'expected_tag_count' => $tagReport['expected_tag_count'],
         ];
     }
 
@@ -1156,24 +1188,48 @@ class InventoryStockService
             throw new \RuntimeException('Scanned item does not match this stock check.');
         }
 
-        $reference = $epc ?: $qrCode;
+        $reference = $epc ? strtoupper(trim($epc)) : trim((string) $qrCode);
         $method    = $epc ? 'uhf' : 'qr';
+
+        $dup = (new StockCheckScanModel())
+            ->where('session_id', $sessionId)
+            ->where('scan_reference', $reference)
+            ->first();
+        if ($dup) {
+            throw new \RuntimeException('This tag/code was already scanned in this stock check.');
+        }
+
+        $scanQty = 1.0;
+        if ($method === 'uhf' && !empty($lookup['tag_id'])) {
+            $tag = (new InventoryItemTagModel())->find((int) $lookup['tag_id']);
+            if ($tag) {
+                $scanQty = $this->tagDisplayQuantity($tag);
+            }
+        }
 
         (new StockCheckScanModel())->insert([
             'session_id'     => $sessionId,
             'scan_reference' => $reference,
             'scan_method'    => $method,
-            'quantity'       => 1,
+            'quantity'       => $scanQty,
         ]);
 
-        $counted = $this->sumSessionScans($sessionId);
+        $counted   = $this->sumSessionScans($sessionId);
+        $tagReport = $this->buildStockCheckTagReport(
+            $session['item_type'],
+            (int) $session['item_id'],
+            $sessionId,
+            $session['scan_method'] ?? 'qr'
+        );
 
         return [
             'session_id'       => $sessionId,
             'counted_balance'  => $counted,
             'expected_balance' => (float) $session['expected_balance'],
             'scan_reference'   => $reference,
-        ];
+            'scan_quantity'    => $scanQty,
+            'scans'            => $this->formatStockCheckScans($sessionId),
+        ] + $tagReport;
     }
 
     public function completeStockCheck(int $sessionId, ?float $countedQuantity = null, ?string $notes = null, ?int $userId = null): array
@@ -1186,6 +1242,40 @@ class InventoryStockService
         $counted  = $countedQuantity ?? $this->sumSessionScans($sessionId);
         $expected = (float) $session['expected_balance'];
         $variance = $counted - $expected;
+        $scanMethod = $session['scan_method'] ?? 'qr';
+        $tagReport = $this->buildStockCheckTagReport(
+            $session['item_type'],
+            (int) $session['item_id'],
+            $sessionId,
+            $scanMethod
+        );
+
+        $stockedOutTags = [];
+        if ($scanMethod === 'uhf' && !empty($tagReport['missing_tags'])) {
+            foreach ($tagReport['missing_tags'] as $missing) {
+                $tag = null;
+                if (!empty($missing['tag_id'])) {
+                    $tag = (new InventoryItemTagModel())->find((int) $missing['tag_id']);
+                }
+                if (!$tag && !empty($missing['epc_no'])) {
+                    $tag = (new InventoryItemTagModel())->getByEpc((string) $missing['epc_no']);
+                }
+                if (!$tag) {
+                    continue;
+                }
+
+                $result = $this->stockOutMissingTagForStockCheck(
+                    $session['item_type'],
+                    (int) $session['item_id'],
+                    $tag,
+                    $sessionId,
+                    $userId
+                );
+                if ($result !== null) {
+                    $stockedOutTags[] = $result;
+                }
+            }
+        }
 
         (new StockCheckSessionModel())->update($sessionId, [
             'status'          => 'completed',
@@ -1195,12 +1285,27 @@ class InventoryStockService
             'completed_at'    => date('Y-m-d H:i:s'),
         ]);
 
+        $isUhfTagged = $scanMethod === 'uhf'
+            && $this->itemHasActiveTags($session['item_type'], (int) $session['item_id']);
+
         $stockOutList = [];
-        if ($variance < 0) {
+        if ($stockedOutTags !== []) {
+            foreach ($stockedOutTags as $row) {
+                $label = trim((string) ($row['label'] ?? ''));
+                $stockOutList[] = [
+                    'transaction_label' => 'Stock Out (not scanned)',
+                    'quantity'          => $row['quantity'],
+                    'balance_after'     => null,
+                    'scan_reference'    => $row['epc_no'],
+                    'label'             => $label,
+                    'datetime'          => date('d M Y H:i'),
+                ];
+            }
+        } elseif ($variance < 0) {
             $stockOutList = $this->getRecentStockOuts($session['item_type'], (int) $session['item_id'], 20);
         }
 
-        if ($variance !== 0.0) {
+        if ($variance !== 0.0 && !$isUhfTagged) {
             $this->applyMovement(
                 $session['item_type'],
                 (int) $session['item_id'],
@@ -1225,8 +1330,91 @@ class InventoryStockService
             'variance'         => $variance,
             'balance_after'    => (float) ($item['quantity_on_hand'] ?? 0),
             'stock_out_list'   => $stockOutList,
-            'scans'            => (new StockCheckScanModel())->where('session_id', $sessionId)->orderBy('id', 'ASC')->findAll(),
+            'stocked_out_tags' => $stockedOutTags,
+            'scans'            => $this->formatStockCheckScans($sessionId),
+        ] + $tagReport;
+    }
+
+    /**
+     * @return array{expected_tags: list<array>, scanned_tags: list<array>, missing_tags: list<array>, expected_tag_count: int, scanned_tag_count: int}
+     */
+    private function buildStockCheckTagReport(string $itemType, int $itemId, int $sessionId, string $scanMethod): array
+    {
+        $empty = [
+            'expected_tags'      => [],
+            'scanned_tags'       => [],
+            'missing_tags'       => [],
+            'expected_tag_count' => 0,
+            'scanned_tag_count'  => 0,
         ];
+
+        if ($scanMethod !== 'uhf') {
+            return $empty;
+        }
+
+        $tags = (new InventoryItemTagModel())->getTagsForItem($itemType, $itemId);
+        if ($tags === []) {
+            return $empty;
+        }
+
+        $scans = (new StockCheckScanModel())
+            ->where('session_id', $sessionId)
+            ->where('scan_method', 'uhf')
+            ->findAll();
+        $scannedEpcs = [];
+        foreach ($scans as $scan) {
+            $scannedEpcs[] = strtoupper(trim((string) ($scan['scan_reference'] ?? '')));
+        }
+
+        $expectedTags = [];
+        $scannedTags  = [];
+        $missingTags  = [];
+
+        foreach ($tags as $tag) {
+            $epc = strtoupper(trim((string) ($tag['epc_no'] ?? '')));
+            $row = [
+                'tag_id'              => (int) $tag['id'],
+                'epc_no'              => $epc,
+                'label'               => trim((string) ($tag['label'] ?? '')),
+                'quantity'            => $this->tagDisplayQuantity($tag),
+                'current_quantity'    => normalize_inventory_qty((float) ($tag['quantity'] ?? 0)),
+                'registered_quantity' => normalize_inventory_qty((float) ($tag['default_quantity'] ?? $tag['quantity'] ?? 0)),
+            ];
+            $expectedTags[] = $row;
+            if (in_array($epc, $scannedEpcs, true)) {
+                $scannedTags[] = $row;
+            } else {
+                $missingTags[] = $row;
+            }
+        }
+
+        return [
+            'expected_tags'      => $expectedTags,
+            'scanned_tags'       => $scannedTags,
+            'missing_tags'       => $missingTags,
+            'expected_tag_count' => count($expectedTags),
+            'scanned_tag_count'  => count($scannedTags),
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function formatStockCheckScans(int $sessionId): array
+    {
+        $rows = (new StockCheckScanModel())
+            ->where('session_id', $sessionId)
+            ->orderBy('id', 'ASC')
+            ->findAll();
+
+        return array_map(static function ($scan) {
+            return [
+                'scan_reference' => $scan['scan_reference'] ?? '',
+                'scan_method'    => $scan['scan_method'] ?? '',
+                'quantity'       => normalize_inventory_qty((float) ($scan['quantity'] ?? 0)),
+                'created_at'     => $scan['created_at'] ?? '',
+            ];
+        }, $rows);
     }
 
     public function getTransactions(?string $startDate = null, ?string $endDate = null, int $limit = 100): array
@@ -1281,7 +1469,7 @@ class InventoryStockService
         $totalOut = 0.0;
 
         foreach ($rows as $row) {
-            if ($tagDriven && $this->isLegacySyncTransaction($row)) {
+            if ($tagDriven && $this->isExcludedFromLedgerTotals($row)) {
                 continue;
             }
 
@@ -1420,7 +1608,7 @@ class InventoryStockService
                     $name,
                     $unit,
                     $batchLabel,
-                    (float) ($tag['quantity'] ?? 0),
+                    $this->tagDisplayQuantity($tag),
                     $storeLocation,
                     $zones[$seenZoneId] ?? $seenZoneId,
                     $detectedAt,
@@ -1452,6 +1640,25 @@ class InventoryStockService
         );
 
         return $rows;
+    }
+
+    /**
+     * Qty shown on mismatch rows: current on-hand, or registered qty when tag is stocked out (0).
+     */
+    private function tagDisplayQuantity(array $tag): float
+    {
+        $current    = normalize_inventory_qty((float) ($tag['quantity'] ?? 0));
+        $registered = normalize_inventory_qty((float) ($tag['default_quantity'] ?? 0));
+
+        if ($current > 0) {
+            return $current;
+        }
+
+        if ($registered > 0) {
+            return $registered;
+        }
+
+        return $current;
     }
 
     /**
@@ -1493,6 +1700,7 @@ class InventoryStockService
             'unit'               => $unit,
             'batch_number'       => $batchNumber,
             'qty'                => normalize_inventory_qty($qty),
+            'qty_fmt'            => format_inventory_qty($qty),
             'store_location'     => $storeLocation,
             'mismatch_location'  => $mismatchLocation,
             'detected_at'        => $ts > 0 ? date('d-M-y H:i', $ts) : '',
@@ -1531,26 +1739,29 @@ class InventoryStockService
             $tagsByKey[$key][] = $tag;
         }
 
-        $txnByKey = $this->buildLedgerTransactionIndex();
+        $txnLists = $this->buildLedgerTransactionLists();
 
         $rows = [];
         foreach ($products as $product) {
-            $rows = array_merge($rows, $this->buildLedgerRowsForItem('product', $product, $tagsByKey, $txnByKey));
+            $rows = array_merge($rows, $this->buildLedgerRowsForItem('product', $product, $tagsByKey, $txnLists));
         }
         foreach ($materials as $material) {
-            $rows = array_merge($rows, $this->buildLedgerRowsForItem('raw_material', $material, $tagsByKey, $txnByKey));
+            $rows = array_merge($rows, $this->buildLedgerRowsForItem('raw_material', $material, $tagsByKey, $txnLists));
         }
 
         return $rows;
     }
 
     /**
-     * @param array<string, list<array>> $tagsByKey
-     * @param array<string, array{qty_in: float, qty_out: float, last_at: ?string}> $txnByKey
+     * @param array{by_key: array<string, list<array>>, by_epc: array<string, list<array>>} $txnLists
      * @return list<array<string, mixed>>
      */
-    private function buildLedgerRowsForItem(string $itemType, array $item, array $tagsByKey, array $txnByKey): array
-    {
+    private function buildLedgerRowsForItem(
+        string $itemType,
+        array $item,
+        array $tagsByKey,
+        array $txnLists
+    ): array {
         $itemId    = (int) $item['id'];
         $key       = $itemType . ':' . $itemId;
         $typeLabel = $itemType === 'product' ? 'Product' : 'Raw Material';
@@ -1559,55 +1770,59 @@ class InventoryStockService
         $unit      = $item['unit'] ?? '';
         $lotNumber = $itemType === 'product' ? trim((string) ($item['lot_number'] ?? '')) : '';
         $tags      = $tagsByKey[$key] ?? [];
-        $txn       = $txnByKey[$key] ?? ['qty_in' => 0.0, 'qty_out' => 0.0, 'last_at' => null];
+        $itemTxns  = $txnLists['by_key'][$key] ?? [];
 
         $batchRows = [];
 
         if ($tags !== []) {
-            foreach ($tags as $tag) {
-                $start   = normalize_inventory_qty((float) ($tag['default_quantity'] ?? $tag['quantity'] ?? 0));
-                $running = normalize_inventory_qty((float) ($tag['quantity'] ?? 0));
-                $delta   = normalize_inventory_qty($running - $start);
-                $qtyIn   = $delta > 0 ? $delta : 0.0;
-                $qtyOut  = $delta < 0 ? normalize_inventory_qty(abs($delta)) : 0.0;
+            $tagCount = count($tags);
+            foreach ($tags as $tagIndex => $tag) {
+                $tagId      = (int) $tag['id'];
+                $epc        = strtoupper(trim((string) ($tag['epc_no'] ?? '')));
+                $registered = normalize_inventory_qty((float) ($tag['default_quantity'] ?? $tag['quantity'] ?? 0));
+                $running    = normalize_inventory_qty((float) ($tag['quantity'] ?? 0));
 
-                $batchLabel = trim((string) ($tag['label'] ?? ''));
-                if ($batchLabel === '') {
-                    $batchLabel = $lotNumber;
-                }
-                if ($batchLabel === '' && !empty($tag['epc_no'])) {
-                    $epc = (string) $tag['epc_no'];
-                    $batchLabel = strlen($epc) > 8 ? substr($epc, -8) : $epc;
+                $tagTxns = ($epc !== '' && isset($txnLists['by_epc'][$epc]))
+                    ? $txnLists['by_epc'][$epc]
+                    : [];
+
+                // Web / legacy movements without EPC reference — attribute to sole tag on item.
+                if ($tagCount === 1 && $tagTxns === []) {
+                    $tagTxns = $itemTxns;
                 }
 
-                $lastAt = $tag['updated_at'] ?? $tag['created_at'] ?? $txn['last_at'];
+                $period = $this->computeLedgerPeriodTotals($registered, $running, $tagTxns);
+
+                $batchLabel = $this->resolveLedgerBatchLabel($tag, $lotNumber, $tagIndex, $tagCount);
 
                 $batchRows[] = [
-                    'start_balance'   => $start,
-                    'qty_in'          => $qtyIn,
-                    'qty_out'         => $qtyOut,
+                    'start_balance'   => $registered,
+                    'qty_in'          => $period['qty_in'],
+                    'qty_out'         => $period['qty_out'],
                     'running_balance' => $running,
                     'batch_number'    => $batchLabel,
-                    'last_at'         => $lastAt,
-                    'tag_id'          => (int) $tag['id'],
+                    'last_at'         => $period['last_at'],
+                    'tag_id'          => $tagId,
                 ];
             }
         } else {
-            $qtyIn   = normalize_inventory_qty((float) $txn['qty_in']);
-            $qtyOut  = normalize_inventory_qty((float) $txn['qty_out']);
-            $running = normalize_inventory_qty((float) ($item['quantity_on_hand'] ?? 0));
-            $start   = normalize_inventory_qty($running - $qtyIn + $qtyOut);
-            if ($start < 0) {
-                $start = 0.0;
+            $running    = normalize_inventory_qty((float) ($item['quantity_on_hand'] ?? 0));
+            $period     = $this->computeLedgerPeriodTotals(0.0, $running, $itemTxns);
+            $registered = normalize_inventory_qty($running + $period['qty_out'] - $period['qty_in']);
+            if ($registered < 0) {
+                $registered = 0.0;
+            }
+            if ($registered <= 0 && $running > 0) {
+                $registered = $running;
             }
 
             $batchRows[] = [
-                'start_balance'   => $start,
-                'qty_in'          => $qtyIn,
-                'qty_out'         => $qtyOut,
+                'start_balance'   => $registered,
+                'qty_in'          => $period['qty_in'],
+                'qty_out'         => $period['qty_out'],
                 'running_balance' => $running,
                 'batch_number'    => $lotNumber,
-                'last_at'         => $txn['last_at'],
+                'last_at'         => $period['last_at'],
                 'tag_id'          => null,
             ];
         }
@@ -1618,7 +1833,7 @@ class InventoryStockService
         }
         $totalInventory = normalize_inventory_qty($totalInventory);
 
-        $rows      = [];
+        $rows       = [];
         $batchCount = count($batchRows);
         foreach ($batchRows as $index => $batch) {
             $lastAt = $batch['last_at'];
@@ -1635,7 +1850,9 @@ class InventoryStockService
                 'qty_out'             => $batch['qty_out'],
                 'running_balance'     => $batch['running_balance'],
                 'total_inventory'     => $totalInventory,
+                'show_product_info'   => $index === 0,
                 'show_total'          => $index === 0,
+                'group_rowspan'       => $batchCount,
                 'is_first_in_group'   => $index === 0,
                 'is_last_in_group'    => $index === $batchCount - 1,
                 'tag_id'              => $batch['tag_id'],
@@ -1647,40 +1864,196 @@ class InventoryStockService
         return $rows;
     }
 
+    private function resolveLedgerBatchLabel(array $tag, string $lotNumber, int $tagIndex, int $tagCount): string
+    {
+        $label = trim((string) ($tag['label'] ?? ''));
+        if ($label !== '') {
+            return $label;
+        }
+
+        $epcSuffix = '';
+        if (!empty($tag['epc_no'])) {
+            $epc        = (string) $tag['epc_no'];
+            $epcSuffix  = strlen($epc) > 8 ? substr($epc, -8) : $epc;
+        }
+
+        if ($lotNumber !== '') {
+            if ($tagCount > 1) {
+                return $epcSuffix !== '' ? $lotNumber . ' / ' . $epcSuffix : $lotNumber . ' / Tag ' . ($tagIndex + 1);
+            }
+
+            return $lotNumber;
+        }
+
+        if ($epcSuffix !== '') {
+            return $epcSuffix;
+        }
+
+        return 'Tag ' . ($tagIndex + 1);
+    }
+
     /**
-     * @return array<string, array{qty_in: float, qty_out: float, last_at: ?string}>
+     * Ledger movement lists grouped for period-based totals (not lifetime sums).
+     *
+     * @return array{by_key: array<string, list<array>>, by_epc: array<string, list<array>>}
      */
-    private function buildLedgerTransactionIndex(): array
+    private function buildLedgerTransactionLists(): array
     {
         $rows = (new InventoryTransactionModel())
             ->orderBy('created_at', 'ASC')
             ->findAll();
 
-        $index = [];
+        $byKey = [];
+        $byEpc = [];
+
         foreach ($rows as $row) {
-            if ($this->isLegacySyncTransaction($row)) {
+            if ($this->isExcludedFromLedgerTotals($row)) {
+                continue;
+            }
+
+            if (!in_array($row['transaction_type'], ['stock_in', 'stock_out'], true)) {
                 continue;
             }
 
             $key = $row['item_type'] . ':' . $row['item_id'];
-            if (!isset($index[$key])) {
-                $index[$key] = ['qty_in' => 0.0, 'qty_out' => 0.0, 'last_at' => null];
-            }
+            $byKey[$key][] = $row;
 
-            $qty = (float) $row['quantity'];
-            if ($row['transaction_type'] === 'stock_in') {
-                $index[$key]['qty_in'] += $qty;
-            } elseif ($row['transaction_type'] === 'stock_out') {
-                $index[$key]['qty_out'] += $qty;
-            }
-
-            $createdAt = $row['created_at'] ?? null;
-            if ($createdAt && ($index[$key]['last_at'] === null || $createdAt > $index[$key]['last_at'])) {
-                $index[$key]['last_at'] = $createdAt;
+            $epc = $this->resolveTransactionEpc($row);
+            if ($epc !== null) {
+                $byEpc[$epc][] = $row;
             }
         }
 
-        return $index;
+        return ['by_key' => $byKey, 'by_epc' => $byEpc];
+    }
+
+    /**
+     * Current-cycle Qty In / Qty Out for the ledger, anchored on registered tag capacity.
+     *
+     * Example (registered 10): stock in 10 → in 10 / out 0 / run 10;
+     * stock out 5 → in 10 / out 5 / run 5; stock in 5 → in 5 / out 5 / run 10.
+     *
+     * @param list<array<string, mixed>> $transactions
+     * @return array{qty_in: float, qty_out: float, last_at: ?string}
+     */
+    private function computeLedgerPeriodTotals(float $registered, float $currentQty, array $transactions): array
+    {
+        $registered  = normalize_inventory_qty(max(0, $registered));
+        $currentQty  = normalize_inventory_qty(max(0, $currentQty));
+        $balance     = 0.0;
+        $peakBalance = 0.0;
+        $outSinceFull = 0.0;
+        $inSinceBelow = 0.0;
+        $lastAt      = null;
+
+        foreach ($transactions as $row) {
+            $qty = normalize_inventory_qty((float) ($row['quantity'] ?? 0));
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $createdAt = $row['created_at'] ?? null;
+            if ($createdAt && ($lastAt === null || $createdAt > $lastAt)) {
+                $lastAt = $createdAt;
+            }
+
+            $before = $balance;
+            $capacity = $registered > 0 ? $registered : $peakBalance;
+            $atCapacity = static function (float $qty, float $cap): bool {
+                return $cap > 0 && $qty >= $cap - 0.0000001;
+            };
+
+            if ($row['transaction_type'] === 'stock_in') {
+                if ($before <= 0.0000001) {
+                    // New cycle from empty — previous outs no longer apply to this fill.
+                    $outSinceFull = 0.0;
+                    $inSinceBelow = 0.0;
+                }
+                if ($capacity > 0 && $before < $capacity - 0.0000001) {
+                    $inSinceBelow = normalize_inventory_qty($inSinceBelow + $qty);
+                }
+                $balance = normalize_inventory_qty($balance + $qty);
+            } else {
+                if ($atCapacity($before, $capacity) || ($peakBalance > 0 && $before >= $peakBalance - 0.0000001)) {
+                    $outSinceFull = normalize_inventory_qty($outSinceFull + $qty);
+                }
+                $balance = normalize_inventory_qty(max(0, $balance - $qty));
+                $capacity = $registered > 0 ? $registered : $peakBalance;
+                if ($capacity > 0 && $balance < $capacity - 0.0000001) {
+                    $inSinceBelow = 0.0;
+                }
+            }
+
+            if ($balance > $peakBalance) {
+                $peakBalance = $balance;
+            }
+        }
+
+        if ($registered <= 0) {
+            $registered = max($currentQty, $peakBalance);
+        }
+
+        if ($currentQty <= 0.0000001) {
+            $qtyOut = $outSinceFull;
+            if ($qtyOut <= 0 && $balance > 0.0000001) {
+                $qtyOut = normalize_inventory_qty($balance);
+            }
+
+            return [
+                'qty_in'  => 0.0,
+                'qty_out' => $qtyOut,
+                'last_at' => $lastAt,
+            ];
+        }
+
+        if ($registered > 0 && $currentQty >= $registered - 0.0000001) {
+            $qtyIn = $inSinceBelow > 0
+                ? $inSinceBelow
+                : normalize_inventory_qty($currentQty + $outSinceFull);
+
+            return [
+                'qty_in'  => $qtyIn,
+                'qty_out' => $outSinceFull,
+                'last_at' => $lastAt,
+            ];
+        }
+
+        $capacity = $registered > 0 ? $registered : $peakBalance;
+        if ($capacity > 0 && $currentQty >= $capacity - 0.0000001) {
+            $qtyIn = $inSinceBelow > 0
+                ? $inSinceBelow
+                : normalize_inventory_qty($currentQty + $outSinceFull);
+
+            return [
+                'qty_in'  => $qtyIn,
+                'qty_out' => $outSinceFull,
+                'last_at' => $lastAt,
+            ];
+        }
+
+        return [
+            'qty_in'  => normalize_inventory_qty($currentQty + $outSinceFull),
+            'qty_out' => $outSinceFull,
+            'last_at' => $lastAt,
+        ];
+    }
+
+    private function resolveTransactionEpc(array $row): ?string
+    {
+        $ref = strtoupper(trim((string) ($row['scan_reference'] ?? '')));
+        if ($ref !== '') {
+            return $ref;
+        }
+
+        $notes = (string) ($row['notes'] ?? '');
+        if (preg_match('/Tag \+ Stock In: (\S+)/i', $notes, $matches)) {
+            return strtoupper($matches[1]);
+        }
+        if (preg_match('/UHF tag qty updated: (\S+)/i', $notes, $matches)) {
+            return strtoupper($matches[1]);
+        }
+
+        return null;
     }
 
     public function ensureQrCode(string $itemType, array $item): string
@@ -1934,6 +2307,47 @@ class InventoryStockService
         ];
     }
 
+    private function stockOutMissingTagForStockCheck(
+        string $itemType,
+        int $itemId,
+        array $tag,
+        int $sessionId,
+        ?int $userId = null
+    ): ?array {
+        $tagId = (int) ($tag['id'] ?? 0);
+        if ($tagId <= 0 || ($tag['status'] ?? '') !== 'active') {
+            return null;
+        }
+
+        $tagQty = normalize_inventory_qty((float) ($tag['quantity'] ?? 0));
+        if ($tagQty <= 0) {
+            return null;
+        }
+
+        $epc = strtoupper(trim((string) ($tag['epc_no'] ?? '')));
+        (new InventoryItemTagModel())->update($tagId, ['quantity' => 0.0]);
+
+        $this->logItemMovement(
+            $itemType,
+            $itemId,
+            'stock_out',
+            $tagQty,
+            'uhf',
+            $epc,
+            $tag['last_seen_zone'] ?? null,
+            $userId,
+            'Stock check — tag not scanned',
+            $sessionId
+        );
+
+        return [
+            'tag_id'   => $tagId,
+            'epc_no'   => $epc,
+            'label'    => trim((string) ($tag['label'] ?? '')),
+            'quantity' => $tagQty,
+        ];
+    }
+
     private function logItemMovement(
         string $itemType,
         int $itemId,
@@ -1943,7 +2357,8 @@ class InventoryStockService
         ?string $scanReference = null,
         ?string $zoneId = null,
         ?int $userId = null,
-        ?string $notes = null
+        ?string $notes = null,
+        ?int $stockCheckSessionId = null
     ): void {
         if ($quantity <= 0) {
             return;
@@ -1953,16 +2368,17 @@ class InventoryStockService
         $balance  = $this->syncBalanceFromTags($itemType, $itemId);
 
         (new InventoryTransactionModel())->insert([
-            'item_type'        => $itemType,
-            'item_id'          => $itemId,
-            'transaction_type' => $transactionType,
-            'quantity'         => $quantity,
-            'balance_after'    => $balance,
-            'scan_method'      => $scanMethod,
-            'scan_reference'   => $scanReference,
-            'zone_id'          => $zoneId,
-            'user_id'          => $userId,
-            'notes'            => $notes,
+            'item_type'              => $itemType,
+            'item_id'                => $itemId,
+            'transaction_type'       => $transactionType,
+            'quantity'               => $quantity,
+            'balance_after'          => $balance,
+            'scan_method'            => $scanMethod,
+            'scan_reference'         => $scanReference,
+            'zone_id'                => $zoneId,
+            'user_id'                => $userId,
+            'notes'                  => $notes,
+            'stock_check_session_id' => $stockCheckSessionId,
         ]);
     }
 
@@ -1983,6 +2399,17 @@ class InventoryStockService
         }
 
         return $bestTag;
+    }
+
+    private function isExcludedFromLedgerTotals(array $row): bool
+    {
+        if ($this->isLegacySyncTransaction($row)) {
+            return true;
+        }
+
+        // Zone IN auto-restores tag qty at a reader — not a formal stock-in for the ledger.
+        // Zone OUT is a real stock-out and must appear in Qty Out when the tag is emptied.
+        return (string) ($row['notes'] ?? '') === 'Zone IN';
     }
 
     private function isLegacySyncTransaction(array $row): bool

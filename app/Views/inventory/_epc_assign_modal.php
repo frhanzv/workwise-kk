@@ -6,8 +6,8 @@
 /** @var string $itemLabel */
 $modalKey = md5($postUrl);
 ?>
-<div id="epcAssignModal" class="fixed inset-0 z-[100] hidden bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="epcAssignModalTitle">
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-lg mx-auto shadow-xl max-h-[90vh] overflow-y-auto mt-[5vh]">
+<div id="epcAssignModal" class="fixed inset-0 z-[200] hidden bg-black/50 p-4 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="epcAssignModalTitle">
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-lg mx-auto shadow-xl max-h-[90vh] overflow-y-auto">
         <div class="flex items-center gap-3 mb-4">
             <div class="flex-shrink-0 w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
                 <span class="material-symbols-outlined text-purple-600 dark:text-purple-400 text-2xl">rss_feed</span>
@@ -70,9 +70,20 @@ $modalKey = md5($postUrl);
         return document.getElementById('epcAssignModal');
     }
 
-    window.openEpcAssignModal = function(itemId, itemName) {
+    function mountModalOnBody() {
         const modal = getModal();
-        if (!modal) return;
+        if (!modal || modal.dataset.mounted === '1') return;
+        document.body.appendChild(modal);
+        modal.dataset.mounted = '1';
+    }
+
+    window.openEpcAssignModal = function(itemId, itemName) {
+        mountModalOnBody();
+        const modal = getModal();
+        if (!modal) {
+            console.error('UHF tag modal is missing from the page.');
+            return;
+        }
 
         document.getElementById('epcAssignItemId').value = itemId;
         document.getElementById('epcAssignItemName').textContent = itemName;
@@ -80,7 +91,8 @@ $modalKey = md5($postUrl);
         document.getElementById('epcAssignError').classList.add('hidden');
         document.getElementById('epcAssignSuccess').classList.add('hidden');
         modal.classList.remove('hidden');
-        modal.style.display = 'block';
+        modal.style.display = 'flex';
+        document.body.classList.add('overflow-hidden');
         loadEpcTags(itemId);
         setTimeout(() => document.getElementById('epcAssignInput')?.focus(), 100);
     };
@@ -90,6 +102,7 @@ $modalKey = md5($postUrl);
         if (!modal) return;
         modal.classList.add('hidden');
         modal.style.display = 'none';
+        document.body.classList.remove('overflow-hidden');
         document.getElementById('epcAssignForm')?.reset();
     };
 
@@ -135,7 +148,7 @@ $modalKey = md5($postUrl);
                                class="epc-tag-qty block w-full rounded-lg border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs p-1.5"
                                data-tag-id="${t.tag_id}"/>
                     </div>
-                    <button type="button" onclick="window.removeEpcTag(${t.tag_id})" class="text-red-500 dark:text-red-400 hover:text-red-700 p-1" title="Remove">
+                    <button type="button" onclick="window.removeEpcTag(${t.tag_id})" class="text-red-500 dark:text-red-400 hover:text-red-700 p-1" title="Untag (tag can be reused)">
                         <span class="material-symbols-outlined text-base">delete</span>
                     </button>
                 </div>
@@ -155,7 +168,7 @@ $modalKey = md5($postUrl);
     }
 
     window.removeEpcTag = function(tagId) {
-        if (!confirm('Remove this UHF tag?')) return;
+        if (!confirm('Remove this UHF tag from the item? The physical tag can be assigned to another item later.')) return;
         postJson(epcRemoveTagUrl, { tag_id: tagId }).then(data => {
             if (data.success) {
                 loadEpcTags(document.getElementById('epcAssignItemId').value);
@@ -211,8 +224,16 @@ $modalKey = md5($postUrl);
             });
     });
 
+    mountModalOnBody();
+
     getModal()?.addEventListener('click', function(e) {
         if (e.target === this) window.closeEpcAssignModal();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !getModal()?.classList.contains('hidden')) {
+            window.closeEpcAssignModal();
+        }
     });
 })();
 </script>

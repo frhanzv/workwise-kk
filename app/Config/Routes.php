@@ -99,7 +99,9 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('inventory/stock-check/scan', 'Inventory::stockCheckScan');
     $routes->post('inventory/stock-check/complete', 'Inventory::stockCheckComplete');
     $routes->get('inventory/stock-ledger', 'Inventory::stockLedger');
+    $routes->get('inventory/stock-ledger-data', 'Inventory::stockLedgerData');
     $routes->get('inventory/location-mismatch', 'Inventory::locationMismatch');
+    $routes->get('inventory/location-mismatch-data', 'Inventory::locationMismatchData');
     $routes->get('inventory/search-stock', 'Inventory::searchStock');
     $routes->get('inventory/search-stock/lookup', 'Inventory::searchStockLookup');
     $routes->get('inventory/search-stock/scans', 'Inventory::searchStockScans');
@@ -165,6 +167,8 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('config', 'Config::index');
     $routes->get('config/rfid-settings', 'Config::rfidSettings');
     $routes->post('config/rfid-settings/update', 'Config::updateRfidSettings');
+    $routes->get('config/widget-settings', 'Config::widgetSettings');
+    $routes->post('config/widget-settings/update', 'Config::updateWidgetSettings');
     $routes->get('config/antenna-mode', 'Config::antennaMode');
     $routes->post('config/antenna-mode/store', 'Config::storeAntennaMode');
     $routes->post('config/antenna-mode/update', 'Config::updateAntennaMode');

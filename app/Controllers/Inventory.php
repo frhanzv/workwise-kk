@@ -682,42 +682,114 @@ class Inventory extends BaseController
 
     public function stockLedger()
     {
+        $typeFilter = $this->resolveStockLedgerTypeFilter();
+        $payload    = $this->buildStockLedgerPayload($typeFilter);
+
+        return view('inventory/stock_ledger', [
+            'title'       => 'Inventory Dashboard',
+            'user'        => $this->getLoggedInUser(),
+            'rows'        => $payload['rows'],
+            'type_filter' => $typeFilter,
+            'grand_total' => $payload['grand_total'],
+            'item_count'  => $payload['item_count'],
+            'as_of_date'  => date('j-M-y H:i'),
+        ]);
+    }
+
+    public function stockLedgerData()
+    {
+        $typeFilter = $this->resolveStockLedgerTypeFilter();
+        $payload    = $this->buildStockLedgerPayload($typeFilter);
+
+        return $this->response->setJSON(array_merge([
+            'success'      => true,
+            'last_updated' => date('j-M-y H:i'),
+            'server_time'  => time(),
+            'as_of_date'   => date('j-M-y H:i'),
+        ], $payload));
+    }
+
+    private function resolveStockLedgerTypeFilter(): ?string
+    {
         $typeFilter = $this->request->getGet('type');
-        if (!in_array($typeFilter, ['product', 'raw_material'], true)) {
-            $typeFilter = null;
-        }
 
-        $rows = (new InventoryStockService())->getStockLedger($typeFilter);
+        return in_array($typeFilter, ['product', 'raw_material'], true) ? $typeFilter : null;
+    }
 
+    /**
+     * @return array{rows: list<array<string, mixed>>, grand_total: float, item_count: int, row_count: int}
+     */
+    private function buildStockLedgerPayload(?string $typeFilter): array
+    {
+        $rows       = (new InventoryStockService())->getStockLedger($typeFilter);
         $grandTotal = 0.0;
+        $itemCount  = 0;
+
         foreach ($rows as $row) {
+            if (!empty($row['show_product_info'])) {
+                $itemCount++;
+            }
             if (!empty($row['show_total'])) {
                 $grandTotal += (float) $row['total_inventory'];
             }
         }
 
-        return view('inventory/stock_ledger', [
-            'title'       => 'Stock Ledger',
-            'user'        => $this->getLoggedInUser(),
+        return [
             'rows'        => $rows,
-            'type_filter' => $typeFilter,
             'grand_total' => $grandTotal,
-            'as_of_date'  => date('j-M-y'),
-        ]);
+            'item_count'  => $itemCount,
+            'row_count'   => count($rows),
+        ];
     }
 
     public function locationMismatch()
     {
+        $typeFilter  = $this->resolveLocationMismatchTypeFilter();
+        $alertFilter = $this->resolveLocationMismatchAlertFilter();
+        $payload     = $this->buildLocationMismatchPayload($typeFilter, $alertFilter);
+
+        return view('inventory/location_mismatch', array_merge([
+            'title'        => 'Inventory Location Mismatch Monitoring',
+            'user'         => $this->getLoggedInUser(),
+            'type_filter'  => $typeFilter,
+            'alert_filter' => $alertFilter,
+            'as_of_date'   => date('j-M-y H:i'),
+        ], $payload));
+    }
+
+    public function locationMismatchData()
+    {
+        $typeFilter  = $this->resolveLocationMismatchTypeFilter();
+        $alertFilter = $this->resolveLocationMismatchAlertFilter();
+        $payload     = $this->buildLocationMismatchPayload($typeFilter, $alertFilter);
+
+        return $this->response->setJSON(array_merge([
+            'success'      => true,
+            'last_updated' => date('j-M-y H:i'),
+            'server_time'  => time(),
+            'as_of_date'   => date('j-M-y H:i'),
+        ], $payload));
+    }
+
+    private function resolveLocationMismatchTypeFilter(): ?string
+    {
         $typeFilter = $this->request->getGet('type');
-        if (!in_array($typeFilter, ['product', 'raw_material'], true)) {
-            $typeFilter = null;
-        }
 
+        return in_array($typeFilter, ['product', 'raw_material'], true) ? $typeFilter : null;
+    }
+
+    private function resolveLocationMismatchAlertFilter(): ?string
+    {
         $alertFilter = $this->request->getGet('alert');
-        if (!in_array($alertFilter, ['Low', 'Medium', 'High'], true)) {
-            $alertFilter = null;
-        }
 
+        return in_array($alertFilter, ['Low', 'Medium', 'High'], true) ? $alertFilter : null;
+    }
+
+    /**
+     * @return array{rows: list<array<string, mixed>>, alert_counts: array<string, int>, total: int}
+     */
+    private function buildLocationMismatchPayload(?string $typeFilter, ?string $alertFilter): array
+    {
         $rows = (new InventoryStockService())->getLocationMismatches($typeFilter);
 
         $alertCounts = ['High' => 0, 'Medium' => 0, 'Low' => 0];
@@ -735,15 +807,11 @@ class Inventory extends BaseController
             ));
         }
 
-        return view('inventory/location_mismatch', [
-            'title'        => 'Inventory Location Mismatch Monitoring',
-            'user'         => $this->getLoggedInUser(),
+        return [
             'rows'         => $rows,
-            'type_filter'  => $typeFilter,
-            'alert_filter' => $alertFilter,
             'alert_counts' => $alertCounts,
-            'as_of_date'   => date('j-M-y H:i'),
-        ]);
+            'total'        => count($rows),
+        ];
     }
 
     public function tagStockIn()
@@ -768,19 +836,10 @@ class Inventory extends BaseController
 
         usort($items, static fn ($a, $b) => strcmp($a['name'], $b['name']));
 
-        $zones = (new ZoneModel())
-            ->where('status', 'active')
-            ->orderBy('zone_name', 'ASC')
-            ->findAll();
-
         return view('inventory/tag_stock_in', [
             'title' => 'Tag + Stock In',
             'user'  => $this->getLoggedInUser(),
             'items' => $items,
-            'zones' => array_map(static fn ($z) => [
-                'zone_id'   => $z['zone_id'],
-                'zone_name' => $z['zone_name'],
-            ], $zones),
         ]);
     }
 
@@ -854,7 +913,7 @@ class Inventory extends BaseController
             return $this->response->setJSON(['success' => false, 'message' => 'Scan or enter a valid UHF EPC tag.']);
         }
         if ($storageZoneId === '') {
-            return $this->response->setJSON(['success' => false, 'message' => 'Select a storage location.']);
+            return $this->response->setJSON(['success' => false, 'message' => 'Scan at the lookup desk (LOOKUP antenna) to set storage location.']);
         }
 
         try {
@@ -1068,6 +1127,7 @@ class Inventory extends BaseController
 
         $stockService = new InventoryStockService();
         $stockSummary = $stockService->getItemStockSummary($type, $id) ?? [];
+        $productStockSummary = $stockSummary;
         $stockTxns    = $stockService->getItemTransactions($type, $id, 15);
         $tags         = $stockService->getTagsForItem($type, $id);
 
@@ -1079,6 +1139,40 @@ class Inventory extends BaseController
                     break;
                 }
             }
+        }
+
+        $tagScoped = $scannedTag !== null && $scannedEpc !== '';
+
+        if ($tagScoped) {
+            $tagQty = normalize_inventory_qty((float) ($scannedTag['tag_quantity'] ?? 0));
+            $regQty = normalize_inventory_qty((float) ($scannedTag['tag_registered_quantity'] ?? 0));
+            $delta  = normalize_inventory_qty($tagQty - $regQty);
+            $qtyIn  = $delta > 0 ? $delta : 0.0;
+            $qtyOut = $delta < 0 ? normalize_inventory_qty(abs($delta)) : 0.0;
+
+            $stockSummary = [
+                'balance'             => $tagQty,
+                'balance_fmt'         => format_inventory_qty($tagQty),
+                'total_stock_in'      => $qtyIn,
+                'total_stock_out'     => $qtyOut,
+                'total_stock_in_fmt'  => format_inventory_qty($qtyIn),
+                'total_stock_out_fmt' => format_inventory_qty($qtyOut),
+                'registered_qty'      => $regQty,
+                'registered_qty_fmt'  => format_inventory_qty($regQty),
+                'tag_driven'          => true,
+                'scoped_to_tag'       => true,
+                'unit'                => $item['unit'] ?? '',
+            ];
+
+            $tags = [$scannedTag];
+
+            $stockTxns = array_values(array_filter($stockTxns, static function ($txn) use ($scannedEpc) {
+                $notes = (string) ($txn['notes'] ?? '');
+                $ref   = (string) ($txn['scan_reference'] ?? '');
+
+                return stripos($notes, $scannedEpc) !== false
+                    || strcasecmp($ref, $scannedEpc) === 0;
+            }));
         }
 
         $stockStatus = $this->resolveStockStatus($scannedTag, $stockSummary, $tags);
@@ -1108,10 +1202,16 @@ class Inventory extends BaseController
             ['label' => 'Status', 'value' => ucfirst($item['status'] ?? 'active')],
         ];
 
-        $records = (new InventoryZoneRecordModel())
+        $recordsQuery = (new InventoryZoneRecordModel())
             ->where('item_type', $type)
             ->where('item_id', $id)
-            ->where('date >=', $today)
+            ->where('date >=', $today);
+
+        if ($tagScoped && !empty($scannedTag['tag_id'])) {
+            $recordsQuery->where('tag_id', (int) $scannedTag['tag_id']);
+        }
+
+        $records = $recordsQuery
             ->orderBy('check_in_time', 'DESC')
             ->findAll(20);
 
@@ -1150,14 +1250,16 @@ class Inventory extends BaseController
         }
 
         return [
-            'type'               => $type,
-            'type_label'         => $type === 'product' ? 'Product' : 'Raw Material',
-            'scanned_epc'        => $scannedEpc ?? '',
-            'scanned_qr'         => $scannedQr ?? '',
-            'scanned_tag'        => $scannedTag,
-            'tag_presence'       => $tagPresence,
-            'stock_status'       => $stockStatus,
-            'item'               => [
+            'type'                 => $type,
+            'type_label'           => $type === 'product' ? 'Product' : 'Raw Material',
+            'scoped_to_tag'        => $tagScoped,
+            'scanned_epc'          => $scannedEpc ?? '',
+            'scanned_qr'           => $scannedQr ?? '',
+            'scanned_tag'          => $scannedTag,
+            'tag_presence'         => $tagPresence,
+            'stock_status'         => $stockStatus,
+            'product_stock_summary'=> $tagScoped ? $productStockSummary : null,
+            'item'                 => [
                 'id'             => $id,
                 'code'           => $code,
                 'name'           => $name,
@@ -1166,13 +1268,13 @@ class Inventory extends BaseController
                 'balance'        => (float) ($stockSummary['balance'] ?? $item['quantity_on_hand'] ?? 0),
                 'tag_mode'       => $item['tag_mode'] ?? 'single',
             ],
-            'stock_summary'      => $stockSummary,
-            'detail_fields'      => $detailFields,
-            'tags'               => $tags,
-            'stock_transactions' => $stockTxns,
-            'scan_records'       => $scanRecords,
-            'edit_url'           => $editUrl,
-            'view_url'           => $viewUrl,
+            'stock_summary'        => $stockSummary,
+            'detail_fields'        => $detailFields,
+            'tags'                 => $tags,
+            'stock_transactions'   => $stockTxns,
+            'scan_records'         => $scanRecords,
+            'edit_url'             => $editUrl,
+            'view_url'             => $viewUrl,
         ];
     }
 
@@ -1184,7 +1286,7 @@ class Inventory extends BaseController
             $tagQty = (float) ($scannedTag['tag_quantity'] ?? 0);
             $regQty = (float) ($scannedTag['tag_registered_quantity'] ?? 0);
 
-            if ($tagQty > 0 || $balance > 0) {
+            if ($tagQty > 0) {
                 return [
                     'label'  => 'Stocked In',
                     'tone'   => 'green',
@@ -1196,7 +1298,9 @@ class Inventory extends BaseController
             return [
                 'label'  => 'Tagged — Not Stocked In',
                 'tone'   => 'amber',
-                'detail' => 'Tag is registered but qty is 0. Use Tag + Stock In for first stock in.',
+                'detail' => 'Tag is registered but qty is 0'
+                    . ($regQty > 0 ? ' (registered qty ' . format_inventory_qty($regQty) . ')' : '')
+                    . '. Use Tag + Stock In for first stock in.',
             ];
         }
 

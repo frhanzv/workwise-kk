@@ -10,8 +10,8 @@ class StockCheckScanModel extends Model
     protected $primaryKey       = 'id';
     protected $useAutoIncrement = true;
     protected $returnType       = 'array';
-    protected $allowedFields    = ['session_id', 'scan_reference', 'scan_method', 'quantity'];
+    protected $allowedFields    = ['session_id', 'scan_reference', 'scan_method', 'quantity', 'created_at'];
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';
-    protected $updatedField  = null;
+    protected $updatedField  = '';
 }

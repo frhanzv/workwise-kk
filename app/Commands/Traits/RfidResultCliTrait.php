@@ -58,9 +58,10 @@ trait RfidResultCliTrait
             'checkout'      => 'CHECK OUT',
             'zone_transfer' => 'ZONE TRANSFER',
             'present'       => 'STILL IN ZONE',
-            'duplicate'     => 'DUPLICATE',
-            'denied'        => 'DENIED',
-            default         => strtoupper(str_replace('_', ' ', $action)),
+            'duplicate'         => 'DUPLICATE',
+            'denied'            => 'DENIED',
+            'location_mismatch' => 'LOCATION MISMATCH',
+            default             => strtoupper(str_replace('_', ' ', $action)),
         };
     }
 
@@ -68,7 +69,11 @@ trait RfidResultCliTrait
     {
         if (!empty($result['success'])) {
             $action = $this->formatRfidAction($result['action'] ?? 'unknown');
-            $color  = in_array($result['action'] ?? '', ['present'], true) ? 'yellow' : 'light_green';
+            $color  = match ($result['action'] ?? '') {
+                'present'           => 'yellow',
+                'location_mismatch' => 'light_red',
+                default             => 'light_green',
+            };
 
             CLI::write("  ✓ {$action}: [{$entity['label']}] {$entity['name']} ({$entity['id']})", $color);
 

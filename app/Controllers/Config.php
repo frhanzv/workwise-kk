@@ -85,6 +85,74 @@ class Config extends BaseController
             return redirect()->back()->with('error', 'Failed to update configuration file.');
         }
     }
+
+    public function widgetSettings()
+    {
+        $data = [
+            'title' => 'Widget Settings',
+            'user' => $this->getLoggedInUser(),
+            'config' => config('Widgets'),
+        ];
+
+        return view('config/widget_settings', $data);
+    }
+
+    public function updateWidgetSettings()
+    {
+        $validation = \Config\Services::validation();
+        $validation->setRules([
+            'floatingButtonSize' => 'required|in_list[sm,md,lg]',
+            'panelSize' => 'required|in_list[sm,md,lg]',
+        ]);
+
+        if (!$validation->withRequest($this->request)->run()) {
+            return redirect()->back()->with('error', 'Invalid widget settings.');
+        }
+
+        $floatingButtonSize = $this->request->getPost('floatingButtonSize');
+        $panelSize = $this->request->getPost('panelSize');
+        $floatingButtonsMoveable = $this->request->getPost('floatingButtonsMoveable') === '1';
+        $panelsMoveable = $this->request->getPost('panelsMoveable') === '1';
+
+        $configPath = APPPATH . 'Config/Widgets.php';
+        $content = file_get_contents($configPath);
+
+        $content = preg_replace(
+            '/public bool \$floatingButtonsMoveable = (true|false);/',
+            'public bool $floatingButtonsMoveable = ' . ($floatingButtonsMoveable ? 'true' : 'false') . ';',
+            $content
+        );
+        $content = preg_replace(
+            '/public bool \$panelsMoveable = (true|false);/',
+            'public bool $panelsMoveable = ' . ($panelsMoveable ? 'true' : 'false') . ';',
+            $content
+        );
+        $content = preg_replace(
+            '/public string \$floatingButtonSize = \'(sm|md|lg)\';/',
+            "public string \$floatingButtonSize = '" . $floatingButtonSize . "';",
+            $content
+        );
+        $content = preg_replace(
+            '/public string \$panelSize = \'(sm|md|lg)\';/',
+            "public string \$panelSize = '" . $panelSize . "';",
+            $content
+        );
+
+        if ($content === null || $content === false) {
+            return redirect()->back()->with('error', 'Failed to update configuration file.');
+        }
+
+        if (!preg_match('/public string \$floatingButtonSize = \'' . preg_quote($floatingButtonSize, '/') . '\';/', $content)
+            || !preg_match('/public string \$panelSize = \'' . preg_quote($panelSize, '/') . '\';/', $content)) {
+            return redirect()->back()->with('error', 'Failed to apply widget size settings.');
+        }
+
+        if (file_put_contents($configPath, $content)) {
+            return redirect()->to(base_url('config/widget-settings'))->with('success', 'Widget settings updated successfully!');
+        }
+
+        return redirect()->back()->with('error', 'Failed to update configuration file.');
+    }
     
     public function antennaMode()
     {

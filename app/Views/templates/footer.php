@@ -49,9 +49,6 @@ window.addEventListener('resize', function() {
 
 let isChatMinimized = false;
 let isChatFullscreen = false;
-let isDragging = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
 
 function openAnalyticsChat() {
     const chatWidget = document.getElementById('analytics-chat-widget');
@@ -60,109 +57,18 @@ function openAnalyticsChat() {
     chatWidget.classList.remove('hidden');
     floatingBtn.classList.add('hidden');
     
-    // Position at bottom-right initially
-    chatWidget.style.bottom = '24px';
-    chatWidget.style.right = '24px';
-    chatWidget.style.left = 'auto';
-    chatWidget.style.top = 'auto';
+    if (window.WWFloatingWidgets) {
+        WWFloatingWidgets.applySavedPosition(chatWidget);
+    } else {
+        chatWidget.style.bottom = '24px';
+        chatWidget.style.right = '24px';
+        chatWidget.style.left = 'auto';
+        chatWidget.style.top = 'auto';
+    }
     
-    // Load the chat interface via iframe
     const iframe = document.getElementById('analytics-chat-iframe');
     if (!iframe.src) {
         iframe.src = '<?= base_url('analytics/chat') ?>';
-    }
-    
-    // Initialize drag functionality
-    initDragElement();
-}
-
-// ============================================================
-// DRAG FUNCTIONALITY
-// ============================================================
-
-function initDragElement() {
-    const dragHandle = document.getElementById('analytics-drag-handle');
-    const chatWidget = document.getElementById('analytics-chat-widget');
-    
-    if (!dragHandle || !chatWidget) return;
-    
-    dragHandle.addEventListener('mousedown', dragStart);
-    dragHandle.addEventListener('touchstart', dragStart);
-    
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('touchmove', drag);
-    
-    document.addEventListener('mouseup', dragEnd);
-    document.addEventListener('touchend', dragEnd);
-}
-
-function dragStart(e) {
-    if (isChatFullscreen) return; // Don't drag in fullscreen mode
-    
-    const chatWidget = document.getElementById('analytics-chat-widget');
-    const rect = chatWidget.getBoundingClientRect();
-    
-    if (e.target.closest('#analytics-drag-handle')) {
-        isDragging = true;
-        
-        // Calculate offset between mouse/touch and widget top-left corner
-        if (e.type === "touchstart") {
-            dragOffsetX = e.touches[0].clientX - rect.left;
-            dragOffsetY = e.touches[0].clientY - rect.top;
-        } else {
-            dragOffsetX = e.clientX - rect.left;
-            dragOffsetY = e.clientY - rect.top;
-        }
-        
-        chatWidget.style.transition = 'none';
-        
-        // Remove bottom/right positioning, use top/left instead
-        chatWidget.style.bottom = 'auto';
-        chatWidget.style.right = 'auto';
-        chatWidget.style.left = rect.left + 'px';
-        chatWidget.style.top = rect.top + 'px';
-    }
-}
-
-function drag(e) {
-    if (!isDragging) return;
-    
-    e.preventDefault();
-    
-    const chatWidget = document.getElementById('analytics-chat-widget');
-    const rect = chatWidget.getBoundingClientRect();
-    
-    let clientX, clientY;
-    
-    if (e.type === "touchmove") {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-    } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
-    }
-    
-    // Calculate new position (mouse position - offset)
-    let newLeft = clientX - dragOffsetX;
-    let newTop = clientY - dragOffsetY;
-    
-    // Constrain to viewport boundaries
-    const maxLeft = window.innerWidth - rect.width;
-    const maxTop = window.innerHeight - rect.height;
-    
-    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-    newTop = Math.max(0, Math.min(newTop, maxTop));
-    
-    // Apply new position
-    chatWidget.style.left = newLeft + 'px';
-    chatWidget.style.top = newTop + 'px';
-}
-
-function dragEnd(e) {
-    if (isDragging) {
-        const chatWidget = document.getElementById('analytics-chat-widget');
-        chatWidget.style.transition = '';
-        isDragging = false;
     }
 }
 
@@ -171,20 +77,17 @@ function minimizeAnalyticsChat() {
     const chatBody = document.getElementById('analytics-chat-body');
     const minimizeBtn = document.getElementById('analytics-minimize-btn');
     const maximizeBtn = document.getElementById('analytics-maximize-btn');
+    const panelHeight = chatWidget.dataset.panelHeight || '600px';
     
     if (!isChatMinimized) {
-        // Minimize
         chatBody.classList.add('hidden');
-        chatWidget.classList.remove('h-[500px]', 'md:h-[600px]');
-        chatWidget.classList.add('h-auto');
+        chatWidget.style.height = 'auto';
         minimizeBtn.classList.add('hidden');
         maximizeBtn.classList.remove('hidden');
         isChatMinimized = true;
     } else {
-        // Restore
         chatBody.classList.remove('hidden');
-        chatWidget.classList.remove('h-auto');
-        chatWidget.classList.add('h-[500px]', 'md:h-[600px]');
+        chatWidget.style.height = panelHeight;
         minimizeBtn.classList.remove('hidden');
         maximizeBtn.classList.add('hidden');
         isChatMinimized = false;
@@ -195,11 +98,14 @@ function toggleAnalyticsFullscreen() {
     const chatWidget = document.getElementById('analytics-chat-widget');
     const fullscreenBtn = document.getElementById('analytics-fullscreen-btn');
     const normalBtn = document.getElementById('analytics-normal-btn');
+    const panelWidth = chatWidget.dataset.panelWidth || '400px';
+    const panelHeight = chatWidget.dataset.panelHeight || '600px';
     
     if (!isChatFullscreen) {
-        // Go fullscreen
-        chatWidget.classList.remove('w-[350px]', 'md:w-[400px]', 'h-[500px]', 'md:h-[600px]', 'rounded-2xl');
-        chatWidget.classList.add('w-full', 'h-full', 'rounded-none');
+        chatWidget.style.width = '100%';
+        chatWidget.style.height = '100%';
+        chatWidget.classList.remove('rounded-2xl');
+        chatWidget.classList.add('rounded-none');
         chatWidget.style.bottom = '0';
         chatWidget.style.right = '0';
         chatWidget.style.left = '0';
@@ -208,9 +114,10 @@ function toggleAnalyticsFullscreen() {
         normalBtn.classList.remove('hidden');
         isChatFullscreen = true;
     } else {
-        // Go normal size
-        chatWidget.classList.remove('w-full', 'h-full', 'rounded-none');
-        chatWidget.classList.add('w-[350px]', 'md:w-[400px]', 'h-[500px]', 'md:h-[600px]', 'rounded-2xl');
+        chatWidget.style.width = panelWidth;
+        chatWidget.style.height = panelHeight;
+        chatWidget.classList.remove('rounded-none');
+        chatWidget.classList.add('rounded-2xl');
         chatWidget.style.bottom = '24px';
         chatWidget.style.right = '24px';
         chatWidget.style.left = 'auto';
@@ -224,37 +131,64 @@ function toggleAnalyticsFullscreen() {
 function closeAnalyticsChat() {
     const chatWidget = document.getElementById('analytics-chat-widget');
     const floatingBtn = document.getElementById('analytics-floating-btn');
+    const panelWidth = chatWidget.dataset.panelWidth || '400px';
+    const panelHeight = chatWidget.dataset.panelHeight || '600px';
     
     chatWidget.classList.add('hidden');
     floatingBtn.classList.remove('hidden');
     
-    // Reset states
     isChatMinimized = false;
     isChatFullscreen = false;
     
-    // Reset position to bottom-right
+    chatWidget.style.width = panelWidth;
+    chatWidget.style.height = panelHeight;
+    chatWidget.classList.remove('rounded-none');
+    chatWidget.classList.add('rounded-2xl');
     chatWidget.style.bottom = '24px';
     chatWidget.style.right = '24px';
     chatWidget.style.left = 'auto';
     chatWidget.style.top = 'auto';
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.WWFloatingWidgets) {
+        WWFloatingWidgets.initPanelDrag('analytics-chat-widget', '#analytics-drag-handle', {
+            isBlocked: function () { return isChatFullscreen; }
+        });
+    }
+});
 </script>
 
 <!-- Analytics Chat Floating Button -->
 <?php if (session()->get('isLoggedIn')): ?>
+<?php
+$widgetConfig = config('Widgets');
+$btn = $widgetConfig->floatingButtonClasses();
+$panel = $widgetConfig->panelDimensions();
+?>
+<script>
+window.WW_WIDGET_CONFIG = <?= json_encode([
+    'floatingButtonsMoveable' => $widgetConfig->floatingButtonsMoveable,
+    'panelsMoveable' => $widgetConfig->panelsMoveable,
+    'floatingButtonSize' => $widgetConfig->floatingButtonSize,
+    'panelSize' => $widgetConfig->panelSize,
+    'panelDimensions' => $panel,
+], JSON_UNESCAPED_SLASHES) ?>;
+</script>
+<script src="<?= base_url('assets/js/floating-widgets.js') ?>"></script>
 <?= view('inventory/_finder_widget') ?>
 <!-- Floating Button (Like video call button) -->
-<div id="analytics-floating-btn" class="fixed bottom-6 right-6 z-50">
+<div id="analytics-floating-btn" class="fixed bottom-6 right-6 z-50" data-default-bottom="24" data-default-right="24">
     <button 
         onclick="openAnalyticsChat()"
-        class="flex items-center gap-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-4 rounded-full shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 transform hover:scale-105">
-        <svg class="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        class="flex items-center <?= esc($btn['btn']) ?> bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-full shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 transform hover:scale-105">
+        <svg class="<?= esc($btn['svg']) ?> animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
         </svg>
-        <span class="font-semibold hidden sm:inline">Analytics Assistant</span>
-        <span class="relative flex h-3 w-3">
+        <span class="font-semibold hidden sm:inline <?= esc($btn['text']) ?>">Analytics Assistant</span>
+        <span class="relative flex <?= esc($btn['dot']) ?>">
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+            <span class="relative inline-flex rounded-full h-full w-full bg-white"></span>
         </span>
     </button>
 </div>
@@ -262,13 +196,15 @@ function closeAnalyticsChat() {
 <!-- Floating Chat Widget (Like video chat window) -->
 <div 
     id="analytics-chat-widget" 
-    class="hidden fixed w-[350px] md:w-[400px] h-[500px] md:h-[600px] bg-gray-900 shadow-2xl z-[60] rounded-2xl overflow-hidden flex flex-col"
-    style="bottom: 24px; right: 24px;">
+    class="hidden fixed bg-gray-900 shadow-2xl z-[60] rounded-2xl overflow-hidden flex flex-col"
+    style="bottom: 24px; right: 24px; width: <?= esc($panel['analyticsWidth']) ?>; height: <?= esc($panel['analyticsHeight']) ?>;"
+    data-panel-width="<?= esc($panel['analyticsWidth']) ?>"
+    data-panel-height="<?= esc($panel['analyticsHeight']) ?>">
     
     <!-- Chat Header (Draggable) -->
     <div 
         id="analytics-drag-handle"
-        class="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 flex items-center justify-between border-b border-blue-500 cursor-move select-none">
+        class="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 flex items-center justify-between border-b border-blue-500 select-none">
         <div class="flex items-center gap-2 pointer-events-none">
             <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
                 <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -277,7 +213,7 @@ function closeAnalyticsChat() {
             </div>
             <div>
                 <h3 class="text-white font-bold text-xs">Analytics Assistant</h3>
-                <p class="text-blue-100 text-[10px]">🔒 Drag to move</p>
+                <p class="text-blue-100 text-[10px]"><?= $widgetConfig->panelsMoveable ? 'Drag to move' : 'AI chat' ?></p>
             </div>
         </div>
         <div class="flex items-center gap-1 pointer-events-auto">
