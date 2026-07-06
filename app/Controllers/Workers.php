@@ -1419,6 +1419,11 @@ class Workers extends BaseController
             $zonesArray = explode(',', $assignedZones);
         }
         
+        $departmentFields = $this->resolveDepartmentFields($this->request->getPost('department_id'));
+        if ($departmentFields === null) {
+            return redirect()->back()->withInput()->with('error', 'Please select a valid department.');
+        }
+
         // Prepare data
         $data = [
             'worker_id'      => $this->request->getPost('worker_id'),
@@ -1431,14 +1436,14 @@ class Workers extends BaseController
             'country_id'     => $this->request->getPost('country_id') ?: null,
             'state_id'       => $this->request->getPost('state_id') ?: null,
             'city_id'        => $this->request->getPost('city_id') ?: null,
-            'department'     => $this->request->getPost('department'),
             'position'       => $this->request->getPost('position'),
             'start_date'     => $this->request->getPost('start_date'),
             'shift'          => $this->request->getPost('shift'),
             'status'         => $this->request->getPost('status') ?: 'active',
             'assigned_zones' => !empty($zonesArray) ? json_encode($zonesArray) : null,
-            'last_active'    => date('Y-m-d H:i:s')
+            'last_active'    => date('Y-m-d H:i:s'),
         ];
+        $data = array_merge($data, $departmentFields);
         
         // Handle profile photo upload
         $profilePhoto = $this->request->getFile('profile_photo');
@@ -1556,6 +1561,11 @@ class Workers extends BaseController
             $zonesArray = explode(',', $assignedZones);
         }
         
+        $departmentFields = $this->resolveDepartmentFields($this->request->getPost('department_id'));
+        if ($departmentFields === null) {
+            return redirect()->back()->withInput()->with('error', 'Please select a valid department.');
+        }
+
         // Prepare data
         $data = [
             'ic_number'      => $this->request->getPost('ic_number'),
@@ -1567,13 +1577,13 @@ class Workers extends BaseController
             'country_id'     => $this->request->getPost('country_id') ?: null,
             'state_id'       => $this->request->getPost('state_id') ?: null,
             'city_id'        => $this->request->getPost('city_id') ?: null,
-            'department'     => $this->request->getPost('department'),
             'position'       => $this->request->getPost('position'),
             'start_date'     => $this->request->getPost('start_date'),
             'shift'          => $this->request->getPost('shift'),
             'status'         => $this->request->getPost('status') ?: 'active',
             'assigned_zones' => !empty($zonesArray) ? json_encode($zonesArray) : null,
         ];
+        $data = array_merge($data, $departmentFields);
         
         // Handle RFID tag ID
         $rfidTagId = trim($this->request->getPost('rfid_tag_id') ?? '');
@@ -1592,7 +1602,8 @@ class Workers extends BaseController
             'first_name'  => 'required|max_length[100]',
             'last_name'   => 'required|max_length[100]',
             'email'       => "required|valid_email|is_unique[workers.email,worker_id,{$workerId}]",
-            'department'  => 'required|max_length[100]',
+            'department_id' => 'required|is_not_unique[departments.id]',
+            'department'    => 'required|max_length[100]',
             'position'    => 'required|max_length[100]',
             'start_date'  => 'required|valid_date',
             'shift'       => 'required|max_length[100]',
@@ -2540,21 +2551,7 @@ public function shiftPreviewDebug()
         $activeReaders = $totalZones; // Assuming all active zones have active readers
         
         // Calculate uptime (get earliest attendance record ever to show system operational time)
-        $earliestRecord = (new \App\Models\AttendanceRecordModel())
-            ->orderBy('check_in_time', 'ASC')
-            ->first();
-        
-        $uptime = '0D 0H 0M';
-        if ($earliestRecord) {
-            $startTime = strtotime($earliestRecord['check_in_time']);
-            $currentTime = time();
-            $diff = $currentTime - $startTime;
-            
-            $days = floor($diff / 86400);
-            $hours = floor(($diff % 86400) / 3600);
-            $minutes = floor(($diff % 3600) / 60);
-            $uptime = $days . 'D ' . $hours . 'H ' . $minutes . 'M';
-        }
+        $uptime = $this->calculateMonitoringUptime();
         
         // Get all departments
         $departments = $departmentModel->findAll();
@@ -2785,30 +2782,16 @@ public function shiftPreviewDebug()
         $activeReaders = $totalZones;
         
         // Calculate uptime (get earliest attendance record ever to show system operational time)
-        $earliestRecord = (new \App\Models\AttendanceRecordModel())
-            ->orderBy('check_in_time', 'ASC')
-            ->first();
-        
-        $uptime = '0D 0H 0M';
-        if ($earliestRecord) {
-            $startTime = strtotime($earliestRecord['check_in_time']);
-            $currentTime = time();
-            $diff = $currentTime - $startTime;
-            
-            $days = floor($diff / 86400);
-            $hours = floor(($diff % 86400) / 3600);
-            $minutes = floor(($diff % 3600) / 60);
-            $uptime = $days . 'D ' . $hours . 'H ' . $minutes . 'M';
-        }
+        $uptime = $this->calculateMonitoringUptime();
         
         // Get assets in zone for live updates
         $assetModel = new \App\Models\AssetModel();
         $zoneAssets = [];
-        if ($selectedZoneId) {
+        if ($zoneId) {
             $zoneAssets = $assetModel
                 ->select('assets.*, workers.first_name, workers.last_name, workers.worker_id as w_id')
                 ->join('workers', 'workers.worker_id = assets.assigned_worker_id', 'left')
-                ->where('assets.last_seen_zone', $selectedZoneId)
+                ->where('assets.last_seen_zone', $zoneId)
                 ->findAll();
         } else {
             $zoneAssets = $assetModel
@@ -2819,7 +2802,7 @@ public function shiftPreviewDebug()
                 ->findAll();
         }
         
-        return $this->response->setJSON([
+        return $this->response->setJSON($this->sanitizeUtf8Recursive([
             'success' => true,
             'checked_in' => $checkedInCount,
             'checked_out' => $checkedOutCount,
@@ -2830,7 +2813,7 @@ public function shiftPreviewDebug()
             'uptime' => $uptime,
             'total_records' => $totalRecords,
             'zone_assets' => $zoneAssets
-        ]);
+        ]));
     }
 
     /**
@@ -3049,5 +3032,69 @@ public function shiftPreviewDebug()
         ];
 
         return view('workers/assets', $data);
+    }
+
+    private function resolveDepartmentFields($departmentId): ?array
+    {
+        $departmentId = (int) $departmentId;
+        if ($departmentId <= 0) {
+            return null;
+        }
+
+        $department = (new \App\Models\DepartmentModel())->find($departmentId);
+        if (!$department) {
+            return null;
+        }
+
+        return [
+            'department_id' => $departmentId,
+            'department'    => strtolower($department['name']),
+        ];
+    }
+
+    private function calculateMonitoringUptime(): string
+    {
+        $earliestRecord = (new \App\Models\AttendanceRecordModel())
+            ->where('check_in_time IS NOT NULL')
+            ->orderBy('check_in_time', 'ASC')
+            ->first();
+
+        if (!$earliestRecord || empty($earliestRecord['check_in_time'])) {
+            return '0D 0H 0M';
+        }
+
+        $diff = time() - strtotime($earliestRecord['check_in_time']);
+        if ($diff < 0) {
+            return '0D 0H 0M';
+        }
+
+        $days = (int) floor($diff / 86400);
+        $hours = (int) floor(($diff % 86400) / 3600);
+        $minutes = (int) floor(($diff % 3600) / 60);
+
+        return $days . 'D ' . $hours . 'H ' . $minutes . 'M';
+    }
+
+    /**
+     * @param mixed $data
+     * @return mixed
+     */
+    private function sanitizeUtf8Recursive($data)
+    {
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                $data[$key] = $this->sanitizeUtf8Recursive($value);
+            }
+
+            return $data;
+        }
+
+        if (is_string($data)) {
+            $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $data);
+
+            return $clean !== false ? $clean : '';
+        }
+
+        return $data;
     }
 }

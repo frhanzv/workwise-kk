@@ -10,6 +10,9 @@ use App\Models\AssetModel;
 use App\Models\ProductModel;
 use App\Models\RawMaterialModel;
 use App\Models\InventoryZoneRecordModel;
+use App\Models\InventoryItemTagModel;
+use App\Services\InventoryStockService;
+use App\Libraries\RfidLookupQueue;
 use App\Libraries\YanzeoSA810;
 use CodeIgniter\RESTful\ResourceController;
 
@@ -312,7 +315,51 @@ class RFID extends ResourceController
             ];
         }
         
-        // Check if this EPC belongs to a product
+        // Lookup desk: identify tag and show on Search Stock — never zone IN/OUT or stock change.
+        if ($this->isLookupAntenna($antennaFunction)) {
+            return $this->processInventoryLookup($tagId, $resolvedZone, $timestamp);
+        }
+
+        // Check if this EPC belongs to an inventory tag (product or raw material)
+        $tagModel = new InventoryItemTagModel();
+        $tag = $tagModel->getByEpc($tagId);
+
+        if ($tag) {
+            $itemType = $tag['item_type'];
+            $itemId   = (int) $tag['item_id'];
+            $itemModel = $itemType === 'product' ? new ProductModel() : new RawMaterialModel();
+            $item = $itemModel->find($itemId);
+
+            if ($item) {
+                $code = $itemType === 'product' ? $item['product_code'] : $item['material_code'];
+                $name = $itemType === 'product' ? $item['product_name'] : $item['material_name'];
+
+                return $this->processInventoryZoneAttendance(
+                    $itemType,
+                    $itemId,
+                    $code,
+                    $name,
+                    $itemModel,
+                    $resolvedZone,
+                    $timestamp,
+                    $antennaFunction,
+                    [
+                        'id'           => $itemId,
+                        'code'         => $code,
+                        'name'         => $name,
+                        'tag_id'                  => (int) $tag['id'],
+                        'tag_quantity'            => (float) $tag['quantity'],
+                        'tag_registered_quantity' => (float) ($tag['default_quantity'] ?? $tag['quantity']),
+                        'epc_no'                  => $tag['epc_no'],
+                    ],
+                    $itemType === 'product' ? 'product' : 'raw_material',
+                    (int) $tag['id'],
+                    normalize_inventory_qty((float) $tag['quantity'])
+                );
+            }
+        }
+
+        // Check if this EPC belongs to a product (legacy single EPC on item row)
         $productModel = new ProductModel();
         $product = $productModel->getByEpc($tagId);
 
@@ -331,7 +378,9 @@ class RFID extends ResourceController
                     'code' => $product['product_code'],
                     'name' => $product['product_name'],
                 ],
-                'product'
+                'product',
+                null,
+                (float) ($product['qty_per_tag'] ?? 1)
             );
         }
 
@@ -354,7 +403,9 @@ class RFID extends ResourceController
                     'code' => $rawMaterial['material_code'],
                     'name' => $rawMaterial['material_name'],
                 ],
-                'raw_material'
+                'raw_material',
+                null,
+                (float) ($rawMaterial['qty_per_tag'] ?? 1)
             );
         }
 
@@ -637,13 +688,70 @@ class RFID extends ResourceController
             ];
         }
     }
+
+    protected function isLookupAntenna(string $function): bool
+    {
+        return strtoupper(trim($function)) === 'LOOKUP';
+    }
+
+    protected function processInventoryLookup(string $tagId, ?array $zone, string $timestamp): array
+    {
+        $stockService = new InventoryStockService();
+        $match        = $stockService->lookupByScan($tagId, null);
+        $zonePayload  = $zone ? ['id' => $zone['zone_id'], 'name' => $zone['zone_name']] : null;
+
+        RfidLookupQueue::push([
+            'epc'       => strtoupper($tagId),
+            'zone_id'   => $zone['zone_id'] ?? null,
+            'zone_name' => $zone['zone_name'] ?? null,
+            'timestamp' => $timestamp,
+            'found'     => $match !== null,
+            'item_type' => $match['type'] ?? null,
+            'item_id'   => $match['id'] ?? null,
+            'item_code' => $match['code'] ?? null,
+            'item_name' => $match['name'] ?? null,
+        ]);
+
+        if (!$match) {
+            log_message('info', "Lookup desk scan — unregistered tag: {$tagId}");
+
+            return [
+                'success' => false,
+                'message' => 'Tag not registered. Use Tag + Stock In to assign.',
+                'action'  => 'lookup',
+                'epc'     => strtoupper($tagId),
+                'zone'    => $zonePayload,
+            ];
+        }
+
+        $type  = $match['type'];
+        $id    = (int) $match['id'];
+        $model = $type === 'product' ? new ProductModel() : new RawMaterialModel();
+
+        if ($zone) {
+            $model->updateLastSeen($id, $zone['zone_id']);
+        }
+        if (!empty($match['tag_id'])) {
+            (new InventoryItemTagModel())->updateLastSeen((int) $match['tag_id'], $zone['zone_id'] ?? null);
+        }
+
+        log_message('info', "Lookup desk scan — {$match['code']} (no stock change)");
+
+        return [
+            'success' => true,
+            'message' => 'Lookup: ' . $match['name'] . ' — no stock change',
+            'action'  => 'lookup',
+            'epc'     => strtoupper($tagId),
+            'zone'    => $zonePayload,
+            'item'    => $match,
+        ];
+    }
     
     /**
-     * Process zone presence for products and raw materials.
+     * Process zone IN/OUT for products and raw materials (mirrors worker attendance).
      *
-     * Inventory items do not use explicit OUT taps. A scan means the item is
-     * in that zone. If the item is seen in a different zone, the previous
-     * zone is checked out automatically and duration stops counting.
+     * IN  → record zone check-in, restore tag stock up to registered quantity.
+     * OUT → record zone check-out and deduct current tag quantity from stock.
      */
     protected function processInventoryZoneAttendance(
         string $itemType,
@@ -655,7 +763,9 @@ class RFID extends ResourceController
         string $timestamp,
         string $antennaFunction,
         array $itemPayload,
-        string $responseKey
+        string $responseKey,
+        ?int $tagId = null,
+        float $tagQuantity = 1.0
     ): array {
         if (!$zone) {
             return [
@@ -665,99 +775,123 @@ class RFID extends ResourceController
             ];
         }
 
-        $zoneId      = $zone['zone_id'];
-        $date        = date('Y-m-d', strtotime($timestamp));
-        $time        = date('H:i:s', strtotime($timestamp));
-        $currentTs   = strtotime($timestamp);
-        $recordModel = new InventoryZoneRecordModel();
-
-        $activeRecord = $recordModel->getActiveCheckInAnyZone($itemType, $itemId, $date);
-        $zonePayload  = ['id' => $zoneId, 'name' => $zone['zone_name']];
+        $zoneId           = $zone['zone_id'];
+        $date             = date('Y-m-d', strtotime($timestamp));
+        $time             = date('H:i:s', strtotime($timestamp));
+        $currentTs        = strtotime($timestamp);
+        $recordModel      = new InventoryZoneRecordModel();
+        $tagModel         = new InventoryItemTagModel();
+        $stockService     = new InventoryStockService();
+        $zonePayload      = ['id' => $zoneId, 'name' => $zone['zone_name']];
         $duplicateInterval = $this->config->checkInToCheckOutInterval;
 
-        if ($activeRecord) {
-            if ($activeRecord['zone_id'] === $zoneId) {
-                $itemModel->updateLastSeen($itemId, $zoneId);
+        if ($tagId) {
+            $activeRecord = $recordModel->getActiveCheckInForTag($tagId, $zoneId, $date);
+            if (!$activeRecord) {
+                $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $date);
+                if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
+                    $recordModel->update($activeElsewhere['id'], ['check_out_time' => $timestamp]);
+                }
+                $activeRecord = null;
+            }
+        } else {
+            $activeRecord = $recordModel->getActiveCheckIn($itemType, $itemId, $zoneId, $date);
+        }
 
-                $timeSinceCheckIn = $currentTs - strtotime($activeRecord['check_in_time']);
-                if ($timeSinceCheckIn < $duplicateInterval) {
-                    return [
-                        'success'      => false,
-                        'message'      => 'Item already in this zone',
-                        'action'       => 'duplicate',
-                        $responseKey   => $itemPayload,
-                        'zone'         => $zonePayload,
-                        'time'         => $time,
-                        'check_in_time'=> date('H:i:s', strtotime($activeRecord['check_in_time'])),
-                    ];
+        if ($activeRecord) {
+            if ($antennaFunction === 'IN') {
+                $recordModel->update($activeRecord['id'], ['check_in_time' => $timestamp]);
+                $itemModel->updateLastSeen($itemId, $zoneId);
+                if ($tagId) {
+                    $tagModel->updateLastSeen($tagId, $zoneId);
                 }
 
-                log_message('info', "Inventory still in zone: {$itemType} {$itemCode} at zone {$zoneId}");
-
                 return [
-                    'success'      => true,
-                    'message'      => 'Still in zone: ' . $itemName,
-                    'action'       => 'present',
-                    $responseKey   => $itemPayload,
-                    'zone'         => $zonePayload,
-                    'time'         => $time,
-                    'check_in_time'=> date('H:i:s', strtotime($activeRecord['check_in_time'])),
+                    'success'    => true,
+                    'message'    => 'Check-in refreshed: ' . $itemName,
+                    'action'     => 'checkin',
+                    $responseKey => $itemPayload,
+                    'zone'       => $zonePayload,
+                    'time'       => $time,
                 ];
             }
 
-            $previousZone = $this->zoneModel->where('zone_id', $activeRecord['zone_id'])->first();
-            $previousZoneName = $previousZone['zone_name'] ?? $activeRecord['zone_id'];
+            $timeSinceCheckIn = $currentTs - strtotime($activeRecord['check_in_time']);
+            if ($timeSinceCheckIn < $duplicateInterval) {
+                return [
+                    'success'    => false,
+                    'message'    => "Please wait at least {$duplicateInterval} seconds before tapping out",
+                    'action'     => 'duplicate',
+                    $responseKey => $itemPayload,
+                    'zone'       => $zonePayload,
+                ];
+            }
 
-            $recordModel->update($activeRecord['id'], [
-                'check_out_time' => $timestamp,
-            ]);
+            $recordModel->update($activeRecord['id'], ['check_out_time' => $timestamp]);
 
-            $recordModel->insert([
-                'item_type'     => $itemType,
-                'item_id'       => $itemId,
-                'zone_id'       => $zoneId,
-                'check_in_time' => $timestamp,
-                'date'          => $date,
-            ]);
+            $stockResult = $stockService->stockOutFromZone(
+                $itemType,
+                $itemId,
+                $tagQuantity,
+                $itemPayload['epc_no'] ?? null,
+                $zoneId,
+                $tagId
+            );
 
             $itemModel->updateLastSeen($itemId, $zoneId);
+            if ($tagId) {
+                $tagModel->updateLastSeen($tagId, $zoneId);
+            }
 
-            log_message('info', "Inventory zone transfer: {$itemType} {$itemCode} from {$activeRecord['zone_id']} to {$zoneId}");
+            $balanceAfter = $stockResult['balance_after'] ?? null;
+
+            log_message('info', "Inventory zone OUT: {$itemType} {$itemCode} qty {$tagQuantity} at {$zoneId}");
 
             return [
-                'success'         => true,
-                'message'         => 'Moved to ' . $zone['zone_name'] . ' (left ' . $previousZoneName . ')',
-                'action'          => 'zone_transfer',
-                $responseKey      => $itemPayload,
-                'zone'            => $zonePayload,
-                'previous_zone'   => [
-                    'id'   => $activeRecord['zone_id'],
-                    'name' => $previousZoneName,
-                ],
-                'time'            => $time,
-                'check_in_time'   => date('H:i:s', strtotime($activeRecord['check_in_time'])),
-                'check_out_time'  => $time,
-                'duration'        => $this->calculateDuration($activeRecord['check_in_time'], $timestamp),
+                'success'        => true,
+                'message'        => 'Check-out recorded' . ($stockResult ? ' — stock reduced' : ''),
+                'action'         => 'checkout',
+                $responseKey     => $itemPayload,
+                'zone'           => $zonePayload,
+                'time'           => $time,
+                'check_in_time'  => date('H:i:s', strtotime($activeRecord['check_in_time'])),
+                'duration'       => $this->calculateDuration($activeRecord['check_in_time'], $timestamp),
+                'stock_deducted' => $stockResult ? (float) $stockResult['quantity'] : 0,
+                'balance_after'  => $balanceAfter,
             ];
         }
 
-        $recentCheckOut = $recordModel
-            ->where('item_type', $itemType)
-            ->where('item_id', $itemId)
+        if ($antennaFunction === 'OUT') {
+            return [
+                'success'    => false,
+                'message'    => 'This antenna is for CHECK-OUT only. Use the IN antenna to bring item into zone.',
+                'action'     => 'denied',
+                $responseKey => $itemPayload,
+                'zone'       => $zonePayload,
+            ];
+        }
+
+        $recentQuery = $recordModel
             ->where('zone_id', $zoneId)
             ->where('date', $date)
-            ->where('check_out_time IS NOT NULL')
-            ->orderBy('check_out_time', 'DESC')
-            ->first();
+            ->where('check_out_time IS NOT NULL');
+
+        if ($tagId) {
+            $recentQuery->where('tag_id', $tagId);
+        } else {
+            $recentQuery->where('item_type', $itemType)
+                ->where('item_id', $itemId)
+                ->where('tag_id IS NULL');
+        }
+
+        $recentCheckOut = $recentQuery->orderBy('check_out_time', 'DESC')->first();
 
         if ($recentCheckOut) {
             $timeSinceCheckOut = $currentTs - strtotime($recentCheckOut['check_out_time']);
-            $requiredInterval  = $this->config->checkOutToCheckInInterval;
-
-            if ($timeSinceCheckOut < $requiredInterval) {
+            if ($timeSinceCheckOut < $this->config->checkOutToCheckInInterval) {
                 return [
                     'success'    => false,
-                    'message'    => "Please wait at least {$requiredInterval} seconds before re-entering this zone",
+                    'message'    => 'Please wait before checking in again',
                     'action'     => 'duplicate',
                     $responseKey => $itemPayload,
                     'zone'       => $zonePayload,
@@ -765,25 +899,79 @@ class RFID extends ResourceController
             }
         }
 
-        $recordModel->insert([
+        if ($tagId) {
+            $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $date);
+            if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
+                $recordModel->update($activeElsewhere['id'], ['check_out_time' => $timestamp]);
+            }
+        } else {
+            $activeElsewhere = $recordModel->getActiveCheckInAnyZone($itemType, $itemId, $date);
+            if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
+                $recordModel->update($activeElsewhere['id'], ['check_out_time' => $timestamp]);
+            }
+        }
+
+        // Products / raw materials may only enter zones listed as storage locations (when configured).
+        if (in_array($itemType, ['product', 'raw_material'], true)) {
+            $item = $itemModel->find($itemId);
+            if ($item && !ProductModel::isZoneAllowedForProduct($item, $zoneId)) {
+                log_message(
+                    'warning',
+                    "Inventory zone IN denied: {$itemType} {$itemCode} not allowed in zone {$zoneId}"
+                );
+
+                return [
+                    'success'    => false,
+                    'message'    => 'Access denied: ' . $itemName . ' is not allowed in ' . ($zone['zone_name'] ?? $zoneId),
+                    'action'     => 'denied',
+                    $responseKey => $itemPayload,
+                    'zone'       => $zonePayload,
+                ];
+            }
+        }
+
+        // Close legacy untagged sessions only — each UHF tag tracks zone presence separately.
+        $recordModel->closeUntaggedSessionsForItem($itemType, $itemId, $date, $timestamp);
+
+        $insertData = [
             'item_type'     => $itemType,
             'item_id'       => $itemId,
             'zone_id'       => $zoneId,
             'check_in_time' => $timestamp,
             'date'          => $date,
-        ]);
+        ];
+        if ($tagId) {
+            $insertData['tag_id'] = $tagId;
+        }
 
+        $recordModel->insert($insertData);
         $itemModel->updateLastSeen($itemId, $zoneId);
+        if ($tagId) {
+            $tagModel->updateLastSeen($tagId, $zoneId);
+        }
 
-        log_message('info', "Inventory check-in: {$itemType} {$itemCode} at zone {$zoneId}");
+        $stockResult = null;
+        if ($tagId) {
+            $stockResult = $stockService->stockInFromZone(
+                $itemType,
+                $itemId,
+                $tagId,
+                $itemPayload['epc_no'] ?? null,
+                $zoneId
+            );
+        }
+
+        log_message('info', "Inventory zone IN: {$itemType} {$itemCode} at {$zoneId}");
 
         return [
-            'success'    => true,
-            'message'    => 'Check-in recorded: ' . $itemName,
-            'action'     => 'checkin',
-            $responseKey => $itemPayload,
-            'zone'       => $zonePayload,
-            'time'       => $time,
+            'success'       => true,
+            'message'       => 'Check-in recorded: ' . $itemName . ($stockResult ? ' — stock restored' : ''),
+            'action'        => 'checkin',
+            $responseKey    => $itemPayload,
+            'zone'          => $zonePayload,
+            'time'          => $time,
+            'stock_restored' => $stockResult ? (float) $stockResult['quantity'] : 0,
+            'balance_after'  => $stockResult['balance_after'] ?? null,
         ];
     }
 

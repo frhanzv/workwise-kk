@@ -2,10 +2,12 @@
 
 namespace App\Controllers;
 
+use App\Models\InventoryItemTagModel;
 use App\Models\InventoryZoneRecordModel;
 use App\Models\ProductModel;
 use App\Models\RawMaterialModel;
 use App\Models\ZoneModel;
+use App\Services\InventoryStockService;
 
 class Inventory extends BaseController
 {
@@ -88,11 +90,25 @@ class Inventory extends BaseController
             $lastZoneName = $lastZone['zone_name'] ?? $item['last_seen_zone'];
         }
 
-        $warehouseZoneName = null;
-        if ($type === 'raw_material' && !empty($item['warehouse_location'])) {
-            $whZone = $zoneModel->where('zone_id', $item['warehouse_location'])->first();
-            $warehouseZoneName = $whZone['zone_name'] ?? $item['warehouse_location'];
+        $zoneNamesMap = [];
+        foreach ($zoneModel->where('status', 'active')->findAll() as $z) {
+            $zoneNamesMap[$z['zone_id']] = $z['zone_name'];
         }
+        $storageRaw = $item['storage_location'] ?? null;
+        if (($storageRaw === null || $storageRaw === '') && $type === 'raw_material' && !empty($item['warehouse_location'])) {
+            $storageRaw = json_encode([(string) $item['warehouse_location']]);
+        }
+        $storageZonesLabel = ProductModel::storageLocationsLabel($storageRaw, $zoneNamesMap);
+
+        $supplierList = [];
+        $rawSuppliers = $item['suppliers'] ?? null;
+        if (is_string($rawSuppliers) && $rawSuppliers !== '') {
+            $decoded = json_decode($rawSuppliers, true);
+            $supplierList = is_array($decoded) ? $decoded : [];
+        } elseif (!empty($item['supplier_name'])) {
+            $supplierList = [(string) $item['supplier_name']];
+        }
+        $suppliersLabel = $supplierList !== [] ? implode(', ', $supplierList) : '—';
 
         $fmtDate = static function ($d) {
             return !empty($d) ? date('d M Y', strtotime($d)) : '—';
@@ -100,46 +116,37 @@ class Inventory extends BaseController
         $fmtMoney = static function ($v) {
             return $v !== null && $v !== '' ? 'RM ' . number_format((float) $v, 2) : '—';
         };
-        $yesNo = static function ($v) {
-            return !empty($v) ? 'Yes' : 'No';
-        };
+        $stockService  = new InventoryStockService();
+        $stockSummary  = $stockService->getItemStockSummary($type, $id) ?? [];
+        $stockTxns     = $stockService->getItemTransactions($type, $id, 20);
 
         $detailFields = [
-            ['label' => 'Reference Number', 'value' => $code],
+            ['label' => 'Total Stock In', 'value' => $stockSummary['total_stock_in_fmt'] ?? '0'],
+            ['label' => 'Total Stock Out', 'value' => $stockSummary['total_stock_out_fmt'] ?? '0'],
+            ['label' => 'Balance', 'value' => $stockSummary['balance_fmt'] ?? '0'],
+            ['label' => $type === 'product' ? 'Product Code' : 'Raw Material Code', 'value' => $code],
             ['label' => 'Name', 'value' => $name],
             ['label' => 'SAP Code', 'value' => $item['sap_code'] ?? '—'],
-            ['label' => 'Category', 'value' => $item['category'] ?? '—'],
             ['label' => 'Unit', 'value' => $item['unit'] ?? '—'],
+            ['label' => 'Shelf Life (Months)', 'value' => $item['shelf_life_months'] ?? '—'],
+            ['label' => 'Expiry Date', 'value' => $fmtDate($item['expiry_date'] ?? null)],
+            ['label' => 'Suppliers', 'value' => $suppliersLabel],
+            ['label' => 'Allowed Zones', 'value' => $storageZonesLabel],
+            ['label' => 'Cost Price', 'value' => $fmtMoney($item['cost_price'] ?? null)],
+            ['label' => 'Selling Price', 'value' => $fmtMoney($item['selling_price'] ?? null)],
             ['label' => 'Status', 'value' => ucfirst($item['status'] ?? 'active')],
         ];
 
-        if ($type === 'product') {
-            $detailFields = array_merge($detailFields, [
-                ['label' => 'Entry Date', 'value' => $fmtDate($item['entry_date'] ?? null)],
-                ['label' => 'Lot Number', 'value' => $item['lot_number'] ?? '—'],
-                ['label' => 'Shelf Life (Months)', 'value' => $item['shelf_life_months'] ?? '—'],
-                ['label' => 'Manufacturing Date', 'value' => $fmtDate($item['manufacturing_date'] ?? null)],
-                ['label' => 'Expiry Date', 'value' => $fmtDate($item['expiry_date'] ?? null)],
-                ['label' => 'Cost Price', 'value' => $fmtMoney($item['cost_price'] ?? null)],
-                ['label' => 'Selling Price', 'value' => $fmtMoney($item['selling_price'] ?? null)],
-                ['label' => 'QC Status', 'value' => $item['qc_status'] ?? '—'],
-                ['label' => 'NSF Certified', 'value' => $yesNo($item['nsf_certified'] ?? 0)],
-                ['label' => 'Halal Certified', 'value' => $yesNo($item['halal_certified'] ?? 0)],
-            ]);
-        } else {
-            $detailFields = array_merge($detailFields, [
-                ['label' => 'Warehouse Location', 'value' => $warehouseZoneName ?? '—'],
-                ['label' => 'Min Stock', 'value' => $item['min_stock'] ?? '—'],
-                ['label' => 'Expiry Alert (Days)', 'value' => $item['expiry_alert_days'] ?? '—'],
-                ['label' => 'Supplier', 'value' => $item['supplier_name'] ?? '—'],
-                ['label' => 'Manufacturer', 'value' => $item['manufacturer_name'] ?? '—'],
-                ['label' => 'Sample Test', 'value' => $yesNo($item['sample_test'] ?? 0)],
-                ['label' => 'Pre-Sample Test', 'value' => $yesNo($item['pre_sample_test'] ?? 0)],
-                ['label' => 'K Test', 'value' => $yesNo($item['k_test'] ?? 0)],
-            ]);
-        }
+        $detailFields[] = ['label' => 'QR Code', 'value' => $item['qr_code'] ?? (new InventoryStockService())->ensureQrCode($type, $item)];
 
-        $detailFields[] = ['label' => 'EPC Tag', 'value' => $item['epc_no'] ?? '—'];
+        $itemTags = $stockService->getTagsForItem($type, $id);
+        $epcDisplay = !empty($itemTags)
+            ? implode(', ', array_column($itemTags, 'epc_no'))
+            : ($item['epc_no'] ?? '—');
+        if ($epcDisplay === '') {
+            $epcDisplay = '—';
+        }
+        $detailFields[] = ['label' => 'EPC Tag', 'value' => $epcDisplay];
         $detailFields[] = ['label' => 'Last Zone', 'value' => $lastZoneName ?? '—'];
         $detailFields[] = ['label' => 'Last Seen', 'value' => !empty($item['last_seen_at']) ? date('d M Y H:i', strtotime($item['last_seen_at'])) : '—'];
         $detailFields[] = ['label' => 'Registered', 'value' => $fmtDate($item['created_at'] ?? null)];
@@ -160,6 +167,14 @@ class Inventory extends BaseController
             }
         }
 
+        $tagEpcs = [];
+        $tagIds  = array_filter(array_unique(array_column($records, 'tag_id')));
+        if ($tagIds) {
+            foreach ((new \App\Models\InventoryItemTagModel())->whereIn('id', $tagIds)->findAll() as $tag) {
+                $tagEpcs[(int) $tag['id']] = $tag['epc_no'];
+            }
+        }
+
         $scanRecords = [];
         foreach ($records as $record) {
             $isIn        = empty($record['check_out_time']);
@@ -168,13 +183,15 @@ class Inventory extends BaseController
             $endTs       = $canLive ? $now : ($isIn ? $checkInTs : strtotime($record['check_out_time']));
 
             $scanRecords[] = [
-                'zone_name' => $zones[$record['zone_id']] ?? $record['zone_id'],
-                'status'    => $isIn ? 'IN' : 'OUT',
-                'time_in'   => date('H:i:s', $checkInTs),
-                'time_out'  => $isIn ? '—' : date('H:i:s', strtotime($record['check_out_time'])),
-                'duration'  => $this->fmtDuration(max(0, $endTs - $checkInTs)),
-                'date'      => date('d M Y', strtotime($record['date'])),
-                'is_live'   => $canLive,
+                'zone_name'      => $zones[$record['zone_id']] ?? $record['zone_id'],
+                'tag_epc'        => !empty($record['tag_id']) ? ($tagEpcs[(int) $record['tag_id']] ?? '') : '',
+                'status'         => $isIn ? 'IN' : 'OUT',
+                'presence_label' => $isIn ? 'In Zone' : 'Left Zone',
+                'time_in'        => date('H:i:s', $checkInTs),
+                'time_out'       => $isIn ? '—' : date('H:i:s', strtotime($record['check_out_time'])),
+                'duration'       => $this->fmtDuration(max(0, $endTs - $checkInTs)),
+                'date'           => date('d M Y', strtotime($record['date'])),
+                'is_live'        => $canLive,
             ];
         }
 
@@ -191,11 +208,15 @@ class Inventory extends BaseController
                 'description'    => $item['description'] ?? '',
                 'status'         => $item['status'] ?? 'active',
                 'epc_no'         => $item['epc_no'] ?? '',
+                'balance'        => (float) ($item['quantity_on_hand'] ?? 0),
+                'qr_code'        => $item['qr_code'] ?? '',
                 'created_at'     => !empty($item['created_at']) ? date('d M Y', strtotime($item['created_at'])) : '—',
                 'last_seen_at'   => !empty($item['last_seen_at']) ? date('d M Y H:i', strtotime($item['last_seen_at'])) : '—',
                 'last_zone_name' => $lastZoneName ?? '—',
             ],
             'detail_fields' => $detailFields,
+            'stock_summary' => $stockSummary,
+            'stock_transactions' => $stockTxns,
             'scan_records' => $scanRecords,
             'filter_label' => $dateRange['filter_label'],
             'edit_url'     => $editUrl,
@@ -246,13 +267,20 @@ class Inventory extends BaseController
 
     private function buildMonitoringPayload(?string $zoneId, array $dateRange): array
     {
+        $recordModel = new InventoryZoneRecordModel();
+        if ($dateRange['is_today']) {
+            $recordModel->consolidateActiveSessionsForDate($dateRange['start_date']);
+        }
+
+        (new InventoryStockService())->syncAllTaggedItemBalances();
+
         $records = $this->getZoneRecords(
             $zoneId,
             $dateRange['start_date'],
             $dateRange['end_date']
         );
 
-        $formattedLogs = $this->formatActivityLogs($records);
+        $formattedLogs = $this->groupActivityLogsByItem($this->formatActivityLogs($records));
         $recentScans   = array_slice($formattedLogs, 0, 50);
         $sideItems     = $this->buildSideItemsFromRecords($records);
         $stats         = $this->computeStats($records);
@@ -260,11 +288,18 @@ class Inventory extends BaseController
         $totalZones = (new ZoneModel())->where('status', 'active')->countAllResults();
 
         return [
-            'products'       => $sideItems['products'],
-            'materials'      => $sideItems['materials'],
-            'recent_scans'   => $recentScans,
-            'all_scans'      => $formattedLogs,
-            'stats'          => $stats,
+            'products'           => $sideItems['products'],
+            'materials'          => $sideItems['materials'],
+            'recent_scans'       => $recentScans,
+            'all_scans'          => $formattedLogs,
+            'stock_transactions' => (new InventoryStockService())->getTransactions(
+                $dateRange['start_date'],
+                $dateRange['end_date'],
+                200
+            ),
+            'inventory_totals'     => (new InventoryStockService())->getTotalInventory(),
+            'inventory_breakdown'  => (new InventoryStockService())->getInventoryBreakdown(),
+            'stats'              => $stats,
             'active_readers' => $totalZones,
             'total_readers'  => $totalZones,
             'last_updated'   => date('H:i:s'),
@@ -305,6 +340,7 @@ class Inventory extends BaseController
             'materials'     => count($materialIds),
             'total'         => count($productIds) + count($materialIds),
             'scanned_today' => count($records),
+            'inventory_qty' => (new InventoryStockService())->getTotalInventory()['total_qty'],
         ];
     }
 
@@ -314,7 +350,8 @@ class Inventory extends BaseController
 
         foreach ($records as $record) {
             $key = $record['item_type'] . ':' . $record['item_id'];
-            if (!isset($latestByKey[$key])) {
+            $ts  = strtotime($record['check_in_time']);
+            if (!isset($latestByKey[$key]) || $ts > strtotime($latestByKey[$key]['check_in_time'])) {
                 $latestByKey[$key] = $record;
             }
         }
@@ -323,24 +360,64 @@ class Inventory extends BaseController
             return ['products' => [], 'materials' => []];
         }
 
-        $formatted = $this->formatActivityLogs(array_values($latestByKey));
+        $productIds  = [];
+        $materialIds = [];
+
+        foreach (array_keys($latestByKey) as $key) {
+            [$type, $id] = explode(':', $key, 2);
+            if ($type === 'product') {
+                $productIds[] = (int) $id;
+            } else {
+                $materialIds[] = (int) $id;
+            }
+        }
+
+        $zoneModel   = new ZoneModel();
+        $productMap  = [];
+        $materialMap = [];
+
+        if ($productIds !== []) {
+            foreach ((new ProductModel())->whereIn('id', $productIds)->findAll() as $p) {
+                $productMap[$p['id']] = $p;
+            }
+        }
+
+        if ($materialIds !== []) {
+            foreach ((new RawMaterialModel())->whereIn('id', $materialIds)->findAll() as $m) {
+                $materialMap[$m['id']] = $m;
+            }
+        }
+
         $products  = [];
         $materials = [];
 
-        foreach ($formatted as $row) {
+        foreach ($latestByKey as $record) {
+            $isProduct = $record['item_type'] === 'product';
+            $item      = $isProduct
+                ? ($productMap[$record['item_id']] ?? null)
+                : ($materialMap[$record['item_id']] ?? null);
+
+            if (!$item) {
+                continue;
+            }
+
+            $currentZone = '—';
+            if (!empty($item['last_seen_zone'])) {
+                $zone        = $zoneModel->where('zone_id', $item['last_seen_zone'])->first();
+                $currentZone = $zone['zone_name'] ?? $item['last_seen_zone'];
+            }
+
             $entry = [
-                'id'            => $row['item_id'],
-                'product_code'  => $row['type'] === 'product' ? $row['code'] : null,
-                'product_name'  => $row['type'] === 'product' ? $row['name'] : null,
-                'material_code' => $row['type'] === 'raw_material' ? $row['code'] : null,
-                'material_name' => $row['type'] === 'raw_material' ? $row['name'] : null,
-                'status'        => $row['status'],
-                'duration'      => $row['duration'],
-                'check_in_ts'   => $row['check_in_ts'],
-                'is_live'       => $row['is_live'],
+                'id'            => $record['item_id'],
+                'product_code'  => $isProduct ? $item['product_code'] : null,
+                'product_name'  => $isProduct ? $item['product_name'] : null,
+                'material_code' => ! $isProduct ? $item['material_code'] : null,
+                'material_name' => ! $isProduct ? $item['material_name'] : null,
+                'current_zone'  => $currentZone,
+                'balance'       => (float) ($item['quantity_on_hand'] ?? 0),
             ];
 
-            if ($row['type'] === 'product') {
+            if ($isProduct) {
                 $products[] = $entry;
             } else {
                 $materials[] = $entry;
@@ -360,7 +437,7 @@ class Inventory extends BaseController
         $materialModel = new RawMaterialModel();
         $zoneModel     = new ZoneModel();
         $now           = time();
-        $isToday       = true; // live duration only when viewing includes today
+        $isToday       = true;
 
         $productIds  = [];
         $materialIds = [];
@@ -396,8 +473,18 @@ class Inventory extends BaseController
             }
         }
 
+        $tagEpcs = [];
+        $tagIds  = array_filter(array_unique(array_column($records, 'tag_id')));
+        if ($tagIds) {
+            foreach ((new \App\Models\InventoryItemTagModel())->whereIn('id', $tagIds)->findAll() as $tag) {
+                $tagEpcs[(int) $tag['id']] = $tag['epc_no'];
+            }
+        }
+
         $today     = date('Y-m-d');
         $formatted = [];
+
+        $service = new InventoryStockService();
 
         foreach ($records as $record) {
             $isProduct = $record['item_type'] === 'product';
@@ -409,33 +496,741 @@ class Inventory extends BaseController
                 continue;
             }
 
+            if ($service->itemHasActiveTags($record['item_type'], (int) $record['item_id'])) {
+                $service->syncBalanceFromTags($record['item_type'], (int) $record['item_id']);
+                $item = $isProduct
+                    ? ($productModel->find($record['item_id']) ?? $item)
+                    : ($materialModel->find($record['item_id']) ?? $item);
+            }
+
             $isIn        = empty($record['check_out_time']);
             $checkInTs   = strtotime($record['check_in_time']);
-            $canLive     = $isIn && $record['date'] === $today;
-            $endTs       = $canLive ? $now : ($isIn ? $checkInTs : strtotime($record['check_out_time']));
-            $durationSec = max(0, $endTs - $checkInTs);
 
             $formatted[] = [
-                'item_id'      => $record['item_id'],
-                'type'         => $record['item_type'],
-                'type_label'   => $isProduct ? 'Product' : 'Raw Material',
-                'code'         => $isProduct ? $item['product_code'] : $item['material_code'],
-                'name'         => $isProduct ? $item['product_name'] : $item['material_name'],
-                'zone_name'    => $zones[$record['zone_id']] ?? $record['zone_id'],
-                'status'       => $isIn ? 'IN' : 'OUT',
-                'time_in'      => date('H:i:s', $checkInTs),
-                'time_out'     => $isIn ? '—' : date('H:i:s', strtotime($record['check_out_time'])),
-                'duration'     => $this->fmtDuration($durationSec),
-                'check_in_ts'  => $canLive ? $checkInTs : null,
-                'is_live'      => $canLive,
-                'record_date'  => $record['date'],
-                'view_url'     => $isProduct
+                'item_id'        => $record['item_id'],
+                'type'           => $record['item_type'],
+                'type_label'     => $isProduct ? 'Product' : 'Raw Material',
+                'code'           => $isProduct ? $item['product_code'] : $item['material_code'],
+                'name'           => $isProduct ? $item['product_name'] : $item['material_name'],
+                'balance'        => (float) ($item['quantity_on_hand'] ?? 0),
+                'zone_name'      => $zones[$record['zone_id']] ?? $record['zone_id'],
+                'tag_epc'        => !empty($record['tag_id']) ? ($tagEpcs[(int) $record['tag_id']] ?? '') : '',
+                'status'         => $isIn ? 'IN' : 'OUT',
+                'presence_label' => $isIn ? 'In Zone' : 'Left Zone',
+                'time_in'        => date('H:i:s', $checkInTs),
+                'time_out'       => $isIn ? '—' : date('H:i:s', strtotime($record['check_out_time'])),
+                'check_in_ts'    => $checkInTs,
+                'check_out_ts'   => $isIn ? null : strtotime($record['check_out_time']),
+                'record_date'    => $record['date'],
+                'view_url'       => $isProduct
                     ? base_url('products/view/' . $item['id'])
                     : base_url('raw-materials/view/' . $item['id']),
             ];
         }
 
         return $formatted;
+    }
+
+    /**
+     * Merge zone activity rows that share the same product/raw material and zone.
+     */
+    private function groupActivityLogsByItem(array $rows): array
+    {
+        if (empty($rows)) {
+            return [];
+        }
+
+        $groups = [];
+
+        foreach ($rows as $row) {
+            $key = ($row['type'] ?? '') . ':' . ($row['item_id'] ?? 0) . ':' . ($row['zone_name'] ?? '');
+
+            if (!isset($groups[$key])) {
+                $groups[$key] = $row;
+                $groups[$key]['tags'] = [];
+                unset($groups[$key]['tag_epc']);
+            }
+
+            $tag = [
+                'epc'           => $row['tag_epc'] ?? '',
+                'status'        => $row['status'],
+                'time_in'       => $row['time_in'],
+                'time_out'      => $row['time_out'],
+                'check_in_ts'   => $row['check_in_ts'],
+                'check_out_ts'  => $row['check_out_ts'] ?? null,
+            ];
+
+            if ($tag['epc'] !== '') {
+                $groups[$key]['tags'][$tag['epc']] = $tag;
+            } else {
+                $groups[$key]['tags'][] = $tag;
+            }
+        }
+
+        $result = [];
+
+        foreach ($groups as $group) {
+            $tags = array_values($group['tags']);
+            $inTags = array_values(array_filter($tags, static fn ($t) => ($t['status'] ?? '') === 'IN'));
+
+            if ($inTags !== []) {
+                $group['status'] = 'IN';
+                $group['check_in_ts'] = min(array_column($inTags, 'check_in_ts'));
+                $group['time_in'] = date('H:i:s', $group['check_in_ts']);
+                $group['time_out'] = '—';
+                $group['presence_label'] = count($tags) > 1
+                    ? 'In Zone (' . count($inTags) . '/' . count($tags) . ' tags)'
+                    : 'In Zone';
+            } else {
+                $group['status'] = 'OUT';
+                $group['presence_label'] = 'Left Zone';
+                $group['check_in_ts'] = min(array_column($tags, 'check_in_ts'));
+                $group['time_in'] = date('H:i:s', $group['check_in_ts']);
+                $outTs = array_filter(array_column($tags, 'check_out_ts'));
+                $group['check_out_ts'] = $outTs ? max($outTs) : null;
+                $group['time_out'] = $group['check_out_ts'] ? date('H:i:s', $group['check_out_ts']) : '—';
+            }
+
+            $group['tags'] = $tags;
+            unset($group['tag_epc']);
+            $result[] = $group;
+        }
+
+        usort($result, static fn ($a, $b) => ($b['check_in_ts'] ?? 0) <=> ($a['check_in_ts'] ?? 0));
+
+        return $result;
+    }
+
+    public function stockCheck()
+    {
+        $products  = (new ProductModel())->where('status', 'active')->orderBy('product_name')->findAll();
+        $materials = (new RawMaterialModel())->where('status', 'active')->orderBy('material_name')->findAll();
+
+        return view('inventory/stock_check', [
+            'title'     => 'Stock Check',
+            'user'      => $this->getLoggedInUser(),
+            'products'  => $products,
+            'materials' => $materials,
+        ]);
+    }
+
+    public function searchStock()
+    {
+        $prefill = trim((string) ($this->request->getGet('q') ?? ''));
+
+        return view('inventory/search_stock', [
+            'title'   => 'Search Stock',
+            'user'    => $this->getLoggedInUser(),
+            'prefill' => $prefill,
+        ]);
+    }
+
+    public function searchStockLookup()
+    {
+        $epc    = strtoupper(trim((string) ($this->request->getGet('epc') ?? '')));
+        $qrCode = trim((string) ($this->request->getGet('qr_code') ?? ''));
+
+        if ($epc === '' && $qrCode === '') {
+            return $this->response->setJSON(['success' => false, 'message' => 'Scan a UHF tag or QR code.']);
+        }
+
+        $service = new InventoryStockService();
+        $match   = $service->lookupByScan($epc !== '' ? $epc : null, $qrCode !== '' ? $qrCode : null);
+
+        if (!$match) {
+            return $this->response->setJSON(['success' => false, 'message' => 'No item found for this scan.']);
+        }
+
+        $type = $match['type'];
+        $id   = (int) $match['id'];
+
+        if ($service->itemHasActiveTags($type, $id)) {
+            $service->syncBalanceFromTags($type, $id);
+        }
+
+        $payload = $this->buildSearchStockPayload($type, $id, $epc !== '' ? $epc : null, $qrCode !== '' ? $qrCode : null);
+
+        return $this->response->setJSON(array_merge(['success' => true], $payload));
+    }
+
+    public function searchStockScans()
+    {
+        $since = (float) ($this->request->getGet('since') ?? 0);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'scans'   => \App\Libraries\RfidLookupQueue::since($since),
+        ]);
+    }
+
+    public function finderSearch()
+    {
+        $query = trim((string) ($this->request->getGet('q') ?? ''));
+
+        if ($query === '') {
+            return $this->response->setJSON(['success' => false, 'message' => 'Enter tag, batch code, or item name.']);
+        }
+
+        $payload = (new InventoryStockService())->findStockByQuery($query);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'query'   => $payload['query'],
+            'results' => $payload['results'],
+        ]);
+    }
+
+    public function stockLedger()
+    {
+        $typeFilter = $this->request->getGet('type');
+        if (!in_array($typeFilter, ['product', 'raw_material'], true)) {
+            $typeFilter = null;
+        }
+
+        $rows = (new InventoryStockService())->getStockLedger($typeFilter);
+
+        $grandTotal = 0.0;
+        foreach ($rows as $row) {
+            if (!empty($row['show_total'])) {
+                $grandTotal += (float) $row['total_inventory'];
+            }
+        }
+
+        return view('inventory/stock_ledger', [
+            'title'       => 'Stock Ledger',
+            'user'        => $this->getLoggedInUser(),
+            'rows'        => $rows,
+            'type_filter' => $typeFilter,
+            'grand_total' => $grandTotal,
+            'as_of_date'  => date('j-M-y'),
+        ]);
+    }
+
+    public function locationMismatch()
+    {
+        $typeFilter = $this->request->getGet('type');
+        if (!in_array($typeFilter, ['product', 'raw_material'], true)) {
+            $typeFilter = null;
+        }
+
+        $alertFilter = $this->request->getGet('alert');
+        if (!in_array($alertFilter, ['Low', 'Medium', 'High'], true)) {
+            $alertFilter = null;
+        }
+
+        $rows = (new InventoryStockService())->getLocationMismatches($typeFilter);
+
+        // TEMP: dummy rows for UI preview — remove when real mismatch data exists
+        $rows = array_merge($rows, $this->getDummyLocationMismatchRows($typeFilter));
+
+        usort($rows, static function ($a, $b) {
+            $severity = ['High' => 0, 'Medium' => 1, 'Low' => 2];
+            $pa = $severity[$a['alert_status']] ?? 9;
+            $pb = $severity[$b['alert_status']] ?? 9;
+            if ($pa !== $pb) {
+                return $pa <=> $pb;
+            }
+
+            return ($b['detected_at_ts'] ?? 0) <=> ($a['detected_at_ts'] ?? 0);
+        });
+
+        $alertCounts = ['High' => 0, 'Medium' => 0, 'Low' => 0];
+        foreach ($rows as $row) {
+            $status = $row['alert_status'] ?? '';
+            if (isset($alertCounts[$status])) {
+                $alertCounts[$status]++;
+            }
+        }
+
+        if ($alertFilter !== null) {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn ($row) => ($row['alert_status'] ?? '') === $alertFilter
+            ));
+        }
+
+        return view('inventory/location_mismatch', [
+            'title'        => 'Inventory Location Mismatch Monitoring',
+            'user'         => $this->getLoggedInUser(),
+            'rows'         => $rows,
+            'type_filter'  => $typeFilter,
+            'alert_filter' => $alertFilter,
+            'alert_counts' => $alertCounts,
+            'as_of_date'   => date('j-M-y H:i'),
+        ]);
+    }
+
+    public function tagStockIn()
+    {
+        $service  = new InventoryStockService();
+        $products = (new ProductModel())
+            ->where('status', 'active')
+            ->orderBy('product_name', 'ASC')
+            ->findAll();
+        $materials = (new RawMaterialModel())
+            ->where('status', 'active')
+            ->orderBy('material_name', 'ASC')
+            ->findAll();
+
+        $items = [];
+        foreach ($products as $product) {
+            $items[] = $this->formatTagStockInItem('product', $product, $service->getTagsForItem('product', (int) $product['id']));
+        }
+        foreach ($materials as $material) {
+            $items[] = $this->formatTagStockInItem('raw_material', $material, $service->getTagsForItem('raw_material', (int) $material['id']));
+        }
+
+        usort($items, static fn ($a, $b) => strcmp($a['name'], $b['name']));
+
+        return view('inventory/tag_stock_in', [
+            'title' => 'Tag + Stock In',
+            'user'  => $this->getLoggedInUser(),
+            'items' => $items,
+        ]);
+    }
+
+    public function tagStockInItem()
+    {
+        $type = (string) ($this->request->getGet('type') ?? '');
+        $id   = (int) ($this->request->getGet('id') ?? 0);
+
+        if (!in_array($type, ['product', 'raw_material'], true) || $id <= 0) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Invalid item.']);
+        }
+
+        $model = $type === 'product' ? new ProductModel() : new RawMaterialModel();
+        $row   = $model->find($id);
+        if (!$row) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Item not found.']);
+        }
+
+        $service = new InventoryStockService();
+        if ($service->itemHasActiveTags($type, $id)) {
+            $service->syncBalanceFromTags($type, $id);
+            $row = $model->find($id);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'item'    => $this->formatTagStockInItem($type, $row, $service->getTagsForItem($type, $id)),
+        ]);
+    }
+
+    public function tagStockInPreview()
+    {
+        $type  = (string) ($this->request->getGet('type') ?? '');
+        $id    = (int) ($this->request->getGet('id') ?? 0);
+        $epcNo = trim((string) ($this->request->getGet('epc_no') ?? ''));
+
+        if (!in_array($type, ['product', 'raw_material'], true) || $id <= 0) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Select a product or raw material.']);
+        }
+
+        try {
+            $plan = (new InventoryStockService())->previewTagStockIn($type, $id, $epcNo);
+
+            return $this->response->setJSON([
+                'success'        => true,
+                'mode'           => $plan['mode'],
+                'epc_no'         => $plan['epc_no'],
+                'quantity'       => $plan['quantity'],
+                'registered_qty' => $plan['registered_qty'],
+                'current_qty'    => $plan['current_qty'],
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function tagStockInSubmit()
+    {
+        $type      = (string) ($this->request->getPost('type') ?? '');
+        $id        = (int) ($this->request->getPost('id') ?? 0);
+        $batchCode = trim((string) ($this->request->getPost('batch_code') ?? ''));
+        $epcNo     = trim((string) ($this->request->getPost('epc_no') ?? ''));
+
+        if (!in_array($type, ['product', 'raw_material'], true) || $id <= 0) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Select a product or raw material.']);
+        }
+        if ($epcNo === '' || strlen($epcNo) < 4) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Scan or enter a valid UHF EPC tag.']);
+        }
+
+        try {
+            $result = (new InventoryStockService())->tagAndStockIn(
+                $type,
+                $id,
+                $epcNo,
+                $batchCode !== '' ? $batchCode : null,
+                (int) session()->get('id') ?: null
+            );
+
+            $item = $result['item'];
+            $tag  = $result['tag'];
+            $qty  = (float) $result['quantity'];
+            $message = ($result['mode'] ?? '') === 'restore'
+                ? 'Confirmed — stocked in ' . format_inventory_qty($qty) . ' (restored to registered qty).'
+                : 'Confirmed — tag assigned and stocked in ' . format_inventory_qty($qty) . '.';
+
+            $service = new InventoryStockService();
+
+            return $this->response->setJSON([
+                'success'       => true,
+                'message'       => $message,
+                'quantity'      => $result['quantity'],
+                'balance_after' => $result['balance_after'],
+                'mode'          => $result['mode'] ?? 'new',
+                'item'          => $this->formatTagStockInItem($type, $item, $service->getTagsForItem($type, $id)),
+                'tag'           => $tag,
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    private function formatTagStockInItem(string $type, array $row, array $tags = []): array
+    {
+        $isProduct = $type === 'product';
+
+        return [
+            'type'             => $type,
+            'id'               => (int) $row['id'],
+            'code'             => $isProduct ? ($row['product_code'] ?? '') : ($row['material_code'] ?? ''),
+            'name'             => $isProduct ? ($row['product_name'] ?? '') : ($row['material_name'] ?? ''),
+            'sap_code'         => $row['sap_code'] ?? '',
+            'unit'             => $row['unit'] ?? '',
+            'tag_mode'         => $row['tag_mode'] ?? 'single',
+            'qty_per_tag'      => (float) ($row['qty_per_tag'] ?? 0),
+            'quantity_on_hand' => (float) ($row['quantity_on_hand'] ?? 0),
+            'tags'             => $tags,
+        ];
+    }
+
+    public function stockCheckStart()
+    {
+        $type   = $this->request->getPost('item_type');
+        $id     = (int) $this->request->getPost('item_id');
+        $method = $this->request->getPost('scan_method') ?: 'qr';
+
+        try {
+            $result = (new InventoryStockService())->startStockCheck(
+                $type,
+                $id,
+                $method,
+                (int) session()->get('id')
+            );
+            return $this->response->setJSON(['success' => true] + $result);
+        } catch (\RuntimeException $e) {
+            return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function stockCheckScan()
+    {
+        $sessionId = (int) $this->request->getPost('session_id');
+        $epc       = $this->request->getPost('epc');
+        $qrCode    = $this->request->getPost('qr_code');
+
+        try {
+            $result = (new InventoryStockService())->scanStockCheck($sessionId, $epc ?: null, $qrCode ?: null);
+            return $this->response->setJSON(['success' => true] + $result);
+        } catch (\RuntimeException $e) {
+            return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function stockCheckComplete()
+    {
+        $sessionId = (int) $this->request->getPost('session_id');
+        $counted   = $this->request->getPost('counted_quantity');
+        $notes     = $this->request->getPost('notes');
+
+        try {
+            $result = (new InventoryStockService())->completeStockCheck(
+                $sessionId,
+                $counted !== null && $counted !== '' ? (float) $counted : null,
+                $notes,
+                (int) session()->get('id')
+            );
+            return $this->response->setJSON(['success' => true] + $result);
+        } catch (\RuntimeException $e) {
+            return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function stockMovement()
+    {
+        $direction = $this->request->getPost('direction');
+        $type      = $this->request->getPost('item_type');
+        $id        = (int) $this->request->getPost('item_id');
+        $quantity  = (float) $this->request->getPost('quantity');
+        $epc       = $this->request->getPost('epc');
+        $qrCode    = $this->request->getPost('qr_code');
+        $notes     = $this->request->getPost('notes');
+
+        $service = new InventoryStockService();
+        if ($epc || $qrCode) {
+            $lookup = $service->lookupByScan($epc ?: null, $qrCode ?: null);
+            if (!$lookup) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Scanned item not found.']);
+            }
+            $type = $lookup['type'];
+            $id   = $lookup['id'];
+        }
+
+        $method    = $epc ? 'uhf' : ($qrCode ? 'qr' : 'web');
+        $reference = $epc ?: $qrCode;
+
+        try {
+            $result = $direction === 'out'
+                ? $service->stockOut($type, $id, $quantity, $method, $reference, null, (int) session()->get('id'), $notes)
+                : $service->stockIn($type, $id, $quantity, $method, $reference, null, (int) session()->get('id'), $notes);
+            return $this->response->setJSON(['success' => true] + $result);
+        } catch (\RuntimeException $e) {
+            return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    private function buildSearchStockPayload(string $type, int $id, ?string $scannedEpc = null, ?string $scannedQr = null): array
+    {
+        $zoneModel = new ZoneModel();
+        $today     = date('Y-m-d');
+        $now       = time();
+
+        if ($type === 'product') {
+            $item = (new ProductModel())->find($id);
+            if (!$item) {
+                return ['message' => 'Product not found.'];
+            }
+            $code    = $item['product_code'];
+            $name    = $item['product_name'];
+            $editUrl = base_url('products/edit/' . $id);
+            $viewUrl = base_url('products/view/' . $id);
+        } else {
+            $item = (new RawMaterialModel())->find($id);
+            if (!$item) {
+                return ['message' => 'Raw material not found.'];
+            }
+            $code    = $item['material_code'];
+            $name    = $item['material_name'];
+            $editUrl = base_url('raw-materials/edit/' . $id);
+            $viewUrl = base_url('raw-materials/view/' . $id);
+        }
+
+        $lastZoneName = null;
+        if (!empty($item['last_seen_zone'])) {
+            $lastZone = $zoneModel->where('zone_id', $item['last_seen_zone'])->first();
+            $lastZoneName = $lastZone['zone_name'] ?? $item['last_seen_zone'];
+        }
+
+        $zoneNamesMap = [];
+        foreach ($zoneModel->where('status', 'active')->findAll() as $z) {
+            $zoneNamesMap[$z['zone_id']] = $z['zone_name'];
+        }
+
+        $storageRaw = $item['storage_location'] ?? null;
+        if (($storageRaw === null || $storageRaw === '') && $type === 'raw_material' && !empty($item['warehouse_location'])) {
+            $storageRaw = json_encode([(string) $item['warehouse_location']]);
+        }
+        $storageZonesLabel = ProductModel::storageLocationsLabel($storageRaw, $zoneNamesMap);
+
+        $supplierList = [];
+        $rawSuppliers = $item['suppliers'] ?? null;
+        if (is_string($rawSuppliers) && $rawSuppliers !== '') {
+            $decoded = json_decode($rawSuppliers, true);
+            $supplierList = is_array($decoded) ? $decoded : [];
+        } elseif (!empty($item['supplier_name'])) {
+            $supplierList = [(string) $item['supplier_name']];
+        }
+        $suppliersLabel = $supplierList !== [] ? implode(', ', $supplierList) : '—';
+
+        $fmtDate  = static fn ($d) => !empty($d) ? date('d M Y', strtotime($d)) : '—';
+        $fmtMoney = static fn ($v) => $v !== null && $v !== '' ? 'RM ' . number_format((float) $v, 2) : '—';
+
+        $stockService = new InventoryStockService();
+        $stockSummary = $stockService->getItemStockSummary($type, $id) ?? [];
+        $stockTxns    = $stockService->getItemTransactions($type, $id, 15);
+        $tags         = $stockService->getTagsForItem($type, $id);
+
+        $scannedTag = null;
+        if ($scannedEpc) {
+            foreach ($tags as $tag) {
+                if (strcasecmp($tag['epc_no'] ?? '', $scannedEpc) === 0) {
+                    $scannedTag = $tag;
+                    break;
+                }
+            }
+        }
+
+        $stockStatus = $this->resolveStockStatus($scannedTag, $stockSummary, $tags);
+
+        $tagPresence = null;
+        if ($scannedTag && !empty($scannedTag['tag_id'])) {
+            $tagPresence = $this->getTagZonePresence((int) $scannedTag['tag_id'], $zoneModel);
+        }
+
+        $detailFields = [
+            ['label' => 'Type', 'value' => $type === 'product' ? 'Product' : 'Raw Material'],
+            ['label' => 'Code', 'value' => $code],
+            ['label' => 'Name', 'value' => $name],
+            ['label' => 'Description', 'value' => trim((string) ($item['description'] ?? '')) ?: '—'],
+            ['label' => 'SAP Code', 'value' => $item['sap_code'] ?? '—'],
+            ['label' => 'Unit', 'value' => $item['unit'] ?? '—'],
+            ['label' => 'Tag Mode', 'value' => ucfirst($item['tag_mode'] ?? 'single')],
+            ['label' => 'Shelf Life (Months)', 'value' => $item['shelf_life_months'] ?? '—'],
+            ['label' => 'Expiry Date', 'value' => $fmtDate($item['expiry_date'] ?? null)],
+            ['label' => 'Suppliers', 'value' => $suppliersLabel],
+            ['label' => 'Allowed Zones', 'value' => $storageZonesLabel],
+            ['label' => 'Cost Price', 'value' => $fmtMoney($item['cost_price'] ?? null)],
+            ['label' => 'Selling Price', 'value' => $fmtMoney($item['selling_price'] ?? null)],
+            ['label' => 'QR Code', 'value' => $item['qr_code'] ?? $stockService->ensureQrCode($type, $item)],
+            ['label' => 'Last Zone', 'value' => $lastZoneName ?? '—'],
+            ['label' => 'Last Seen', 'value' => !empty($item['last_seen_at']) ? date('d M Y H:i', strtotime($item['last_seen_at'])) : '—'],
+            ['label' => 'Status', 'value' => ucfirst($item['status'] ?? 'active')],
+        ];
+
+        $records = (new InventoryZoneRecordModel())
+            ->where('item_type', $type)
+            ->where('item_id', $id)
+            ->where('date >=', $today)
+            ->orderBy('check_in_time', 'DESC')
+            ->findAll(20);
+
+        $zoneIds = array_unique(array_column($records, 'zone_id'));
+        $zones   = [];
+        if ($zoneIds !== []) {
+            foreach ($zoneModel->whereIn('zone_id', $zoneIds)->findAll() as $zone) {
+                $zones[$zone['zone_id']] = $zone['zone_name'];
+            }
+        }
+
+        $tagEpcs = [];
+        $tagIds  = array_filter(array_unique(array_column($records, 'tag_id')));
+        if ($tagIds !== []) {
+            foreach ((new InventoryItemTagModel())->whereIn('id', $tagIds)->findAll() as $tag) {
+                $tagEpcs[(int) $tag['id']] = $tag['epc_no'];
+            }
+        }
+
+        $scanRecords = [];
+        foreach ($records as $record) {
+            $isIn      = empty($record['check_out_time']);
+            $checkInTs = strtotime($record['check_in_time']);
+            $canLive   = $isIn && $record['date'] === $today;
+            $endTs     = $canLive ? $now : ($isIn ? $checkInTs : strtotime($record['check_out_time']));
+
+            $scanRecords[] = [
+                'zone_name'      => $zones[$record['zone_id']] ?? $record['zone_id'],
+                'tag_epc'        => !empty($record['tag_id']) ? ($tagEpcs[(int) $record['tag_id']] ?? '') : '',
+                'status'         => $isIn ? 'IN' : 'OUT',
+                'presence_label' => $isIn ? 'In Zone' : 'Left Zone',
+                'time_in'        => date('H:i:s', $checkInTs),
+                'time_out'       => $isIn ? '—' : date('H:i:s', strtotime($record['check_out_time'])),
+                'duration'       => $this->fmtDuration(max(0, $endTs - $checkInTs)),
+            ];
+        }
+
+        return [
+            'type'               => $type,
+            'type_label'         => $type === 'product' ? 'Product' : 'Raw Material',
+            'scanned_epc'        => $scannedEpc ?? '',
+            'scanned_qr'         => $scannedQr ?? '',
+            'scanned_tag'        => $scannedTag,
+            'tag_presence'       => $tagPresence,
+            'stock_status'       => $stockStatus,
+            'item'               => [
+                'id'             => $id,
+                'code'           => $code,
+                'name'           => $name,
+                'description'    => $item['description'] ?? '',
+                'unit'           => $item['unit'] ?? '',
+                'balance'        => (float) ($stockSummary['balance'] ?? $item['quantity_on_hand'] ?? 0),
+                'tag_mode'       => $item['tag_mode'] ?? 'single',
+            ],
+            'stock_summary'      => $stockSummary,
+            'detail_fields'      => $detailFields,
+            'tags'               => $tags,
+            'stock_transactions' => $stockTxns,
+            'scan_records'       => $scanRecords,
+            'edit_url'           => $editUrl,
+            'view_url'           => $viewUrl,
+        ];
+    }
+
+    private function resolveStockStatus(?array $scannedTag, array $stockSummary, array $tags): array
+    {
+        $balance = (float) ($stockSummary['balance'] ?? 0);
+
+        if ($scannedTag) {
+            $tagQty = (float) ($scannedTag['tag_quantity'] ?? 0);
+            $regQty = (float) ($scannedTag['tag_registered_quantity'] ?? 0);
+
+            if ($tagQty > 0 || $balance > 0) {
+                return [
+                    'label'  => 'Stocked In',
+                    'tone'   => 'green',
+                    'detail' => 'This tag has ' . format_inventory_qty($tagQty) . ' on hand'
+                        . ($regQty > 0 ? ' (registered qty ' . format_inventory_qty($regQty) . ')' : ''),
+                ];
+            }
+
+            return [
+                'label'  => 'Tagged — Not Stocked In',
+                'tone'   => 'amber',
+                'detail' => 'Tag is registered but qty is 0. Use Tag + Stock In for first stock in.',
+            ];
+        }
+
+        if ($tags !== []) {
+            if ($balance > 0) {
+                return [
+                    'label'  => 'Stocked In',
+                    'tone'   => 'green',
+                    'detail' => 'Item balance ' . format_inventory_qty($balance),
+                ];
+            }
+
+            return [
+                'label'  => 'Tagged — Not Stocked In',
+                'tone'   => 'amber',
+                'detail' => 'Item has tags but zero stock.',
+            ];
+        }
+
+        if ($balance > 0) {
+            return [
+                'label'  => 'In Stock (no UHF tag)',
+                'tone'   => 'green',
+                'detail' => 'Balance ' . format_inventory_qty($balance) . ' without active UHF tag.',
+            ];
+        }
+
+        return [
+            'label'  => 'No Stock',
+            'tone'   => 'gray',
+            'detail' => 'No quantity on hand.',
+        ];
+    }
+
+    private function getTagZonePresence(int $tagId, ZoneModel $zoneModel): ?array
+    {
+        $record = (new InventoryZoneRecordModel())
+            ->where('tag_id', $tagId)
+            ->where('check_out_time', null)
+            ->orderBy('check_in_time', 'DESC')
+            ->first();
+
+        if (!$record) {
+            return null;
+        }
+
+        $zone = $zoneModel->where('zone_id', $record['zone_id'])->first();
+
+        return [
+            'zone_name' => $zone['zone_name'] ?? $record['zone_id'],
+            'status'    => 'IN',
+            'since'     => date('d M Y H:i', strtotime($record['check_in_time'])),
+        ];
     }
 
     private function fmtDuration(int $seconds): string
@@ -457,5 +1252,111 @@ class Inventory extends BaseController
         }
 
         return $secs . 's';
+    }
+
+    /**
+     * TEMP: Dummy mismatch rows for page preview. Delete this method and its call in locationMismatch().
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function getDummyLocationMismatchRows(?string $typeFilter = null): array
+    {
+        $now = time();
+        $rows = [
+            [
+                'item_type'         => 'product',
+                'item_id'           => 9001,
+                'tag_id'            => null,
+                'type_label'        => 'Product',
+                'code'              => 'PRD-2026-001',
+                'name'              => 'Industrial Solvent A',
+                'unit'              => 'Litre',
+                'batch_number'      => 'BATCH-2401',
+                'qty'               => 48.0,
+                'store_location'    => 'Warehouse A, Cold Storage',
+                'mismatch_location' => 'Production Floor',
+                'detected_at'       => date('d-M-y H:i', $now - (30 * 3600)),
+                'detected_at_ts'    => $now - (30 * 3600),
+                'alert_status'      => 'High',
+                'age_hours'         => 30,
+            ],
+            [
+                'item_type'         => 'product',
+                'item_id'           => 9002,
+                'tag_id'            => 9002,
+                'type_label'        => 'Product',
+                'code'              => 'PRD-2026-014',
+                'name'              => 'Finished Goods Pack B',
+                'unit'              => 'Carton',
+                'batch_number'      => 'FG-8842',
+                'qty'               => 120.0,
+                'store_location'    => 'Finished Goods Store',
+                'mismatch_location' => 'Loading Bay',
+                'detected_at'       => date('d-M-y H:i', $now - (10 * 3600)),
+                'detected_at_ts'    => $now - (10 * 3600),
+                'alert_status'      => 'Medium',
+                'age_hours'         => 10,
+            ],
+            [
+                'item_type'         => 'raw_material',
+                'item_id'           => 9003,
+                'tag_id'            => null,
+                'type_label'        => 'Raw Material',
+                'code'              => 'RM-CHEM-088',
+                'name'              => 'Sodium Hydroxide Pellets',
+                'unit'              => 'Kg',
+                'batch_number'      => 'LOT-7721',
+                'qty'               => 250.0,
+                'store_location'    => 'Chemical Store',
+                'mismatch_location' => 'Receiving Dock',
+                'detected_at'       => date('d-M-y H:i', $now - (6 * 3600)),
+                'detected_at_ts'    => $now - (6 * 3600),
+                'alert_status'      => 'Medium',
+                'age_hours'         => 6,
+            ],
+            [
+                'item_type'         => 'raw_material',
+                'item_id'           => 9004,
+                'tag_id'            => 9004,
+                'type_label'        => 'Raw Material',
+                'code'              => 'RM-PACK-003',
+                'name'              => 'HDPE Container 20L',
+                'unit'              => 'Pcs',
+                'batch_number'      => 'A1B2C3D4',
+                'qty'               => 36.0,
+                'store_location'    => 'Packaging Store',
+                'mismatch_location' => 'Assembly Line 2',
+                'detected_at'       => date('d-M-y H:i', $now - (2 * 3600)),
+                'detected_at_ts'    => $now - (2 * 3600),
+                'alert_status'      => 'Low',
+                'age_hours'         => 2,
+            ],
+            [
+                'item_type'         => 'product',
+                'item_id'           => 9005,
+                'tag_id'            => 9005,
+                'type_label'        => 'Product',
+                'code'              => 'PRD-2026-022',
+                'name'              => 'Cleaning Agent Concentrate',
+                'unit'              => 'Litre',
+                'batch_number'      => 'CA-9910',
+                'qty'               => 15.5,
+                'store_location'    => 'Warehouse B',
+                'mismatch_location' => 'Maintenance Room',
+                'detected_at'       => date('d-M-y H:i', $now - (45 * 60)),
+                'detected_at_ts'    => $now - (45 * 60),
+                'alert_status'      => 'Low',
+                'age_hours'         => 0.75,
+            ],
+        ];
+
+        if ($typeFilter !== null) {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn ($row) => ($row['item_type'] ?? '') === $typeFilter
+            ));
+        }
+
+        return $rows;
     }
 }

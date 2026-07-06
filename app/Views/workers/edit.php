@@ -159,11 +159,11 @@
                             
                             <div class="space-y-2">
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="department">Department</label>
-                                <select class="block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm p-2.5" id="department" name="department" required>
+                                <select class="block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm p-2.5" id="department" name="department_id" required>
                                     <option disabled value="">Select Department</option>
                                     <?php if (!empty($departments)): ?>
                                         <?php foreach ($departments as $dept): ?>
-                                            <option value="<?= strtolower(esc($dept['name'])) ?>" <?= strtolower($worker['department']) === strtolower($dept['name']) ? 'selected' : '' ?>><?= esc($dept['name']) ?></option>
+                                            <option value="<?= (int) $dept['id'] ?>" <?= (int) ($worker['department_id'] ?? 0) === (int) $dept['id'] || (empty($worker['department_id']) && strtolower($worker['department']) === strtolower($dept['name'])) ? 'selected' : '' ?>><?= esc($dept['name']) ?></option>
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <option value="operations">Operations</option>

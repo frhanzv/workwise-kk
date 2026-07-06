@@ -242,6 +242,7 @@ function closeAnalyticsChat() {
 
 <!-- Analytics Chat Floating Button -->
 <?php if (session()->get('isLoggedIn')): ?>
+<?= view('inventory/_finder_widget') ?>
 <!-- Floating Button (Like video call button) -->
 <div id="analytics-floating-btn" class="fixed bottom-6 right-6 z-50">
     <button 

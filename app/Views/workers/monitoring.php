@@ -172,7 +172,7 @@
                             $allZones = $zoneModel->where('status', 'active')->findAll();
                             foreach ($allZones as $zone): 
                             ?>
-                                <button onclick="filterByZone('<?= esc($zone['id']) ?>')" class="zone-filter-btn px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all border border-gray-200 dark:border-gray-700">
+                                <button onclick="filterByZone('<?= esc($zone['zone_id']) ?>')" class="zone-filter-btn px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all border border-gray-200 dark:border-gray-700">
                                     <?= esc($zone['zone_name']) ?>
                                 </button>
                             <?php endforeach; ?>
@@ -632,48 +632,47 @@ async function updateMonitoringData() {
     isUpdating = true;
     
     try {
-        let url = '<?= base_url('workers/monitoring-data') ?>?';
-        const params = [];
+        const params = new URLSearchParams();
+        params.set('_', String(Date.now()));
         
         if (currentGateFilter !== 'all') {
-            params.push('zone_id=' + currentGateFilter);
+            params.set('zone_id', currentGateFilter);
         }
         
         if (currentDepartmentFilter !== 'all') {
-            params.push('department=' + encodeURIComponent(currentDepartmentFilter));
+            params.set('department', currentDepartmentFilter);
         }
         
         if (currentStatusFilter !== 'all') {
-            params.push('status=' + currentStatusFilter);
+            params.set('status', currentStatusFilter);
         }
         
-        url += params.join('&');
+        const url = '<?= base_url('workers/monitoring-data') ?>?' + params.toString();
         
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store',
+        });
+        
+        if (!response.ok) {
+            throw new Error('Monitoring update failed (' + response.status + ')');
+        }
+        
         const data = await response.json();
         
         if (data.success) {
-            // Update stats cards
-            updateStatsCards(data);
+            document.getElementById('last-updated-time').textContent = data.last_updated;
             
-            // Update activity table (pass full data object)
+            updateStatsCards(data);
             updateActivityTable(data.activity_logs, data);
             
-            // Update asset tracking table
             if (data.zone_assets !== undefined) {
                 updateAssetTable(data.zone_assets);
             }
             
-            // Update last updated time
-            document.getElementById('last-updated-time').textContent = data.last_updated;
-            
-            // Update system status
             updateSystemStatus(data.active_readers);
-            
-            // Update reader stats
             updateReaderStats(data.active_readers, data.total_readers);
             
-            // Update uptime
             if (data.uptime) {
                 document.getElementById('system-uptime').textContent = data.uptime;
             }
@@ -781,7 +780,7 @@ function updateActivityTable(logs, responseData) {
                             <span class="font-bold text-sm text-gray-900 dark:text-white">${log.full_name}</span>
                         </div>
                     </td>
-                    <td class="px-4 lg:px-6 py-4 lg:py-5 text-xs font-semibold text-gray-500 dark:text-gray-400">${log.department.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}</td>
+                    <td class="px-4 lg:px-6 py-4 lg:py-5 text-xs font-semibold text-gray-500 dark:text-gray-400">${(log.department || 'N/A').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}</td>
                     <td class="px-4 lg:px-6 py-4 lg:py-5">${statusBadge}</td>
                     <td class="px-4 lg:px-6 py-4 lg:py-5 text-right text-xs font-black tabular-nums ${log.check_in_status === 'green' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">${log.time_in}</td>
                     <td class="px-4 lg:px-6 py-4 lg:py-5 text-right text-xs font-black tabular-nums ${log.time_out !== '-' ? (log.check_out_status === 'green' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-gray-400 dark:text-gray-500'}">
@@ -831,7 +830,7 @@ function updateActivityTable(logs, responseData) {
                                 ${statusBadge}
                             </div>
                             <div class="flex flex-col gap-1.5 text-xs">
-                                <span class="font-semibold text-gray-600 dark:text-gray-400">${log.department.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}</span>
+                                <span class="font-semibold text-gray-600 dark:text-gray-400">${(log.department || 'N/A').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}</span>
                                 <div class="flex items-center gap-2">
                                     <span class="font-black tabular-nums ${log.check_in_status === 'green' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">In: ${log.time_in}</span>
                                     ${log.time_out !== '-' ? `<span class="text-gray-300 dark:text-gray-700">•</span><span class="font-black tabular-nums ${log.check_out_status === 'green' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">Out: ${log.time_out}</span>` : ''}
@@ -844,23 +843,22 @@ function updateActivityTable(logs, responseData) {
         }).join('');
     }
     
-    // Update record count - Note: AJAX doesn't paginate, shows all filtered results
-    if (responseData && responseData.total_records !== undefined) {
-        const currentPage = <?= $current_page ?>;
-        const perPage = <?= $per_page ?>;
-        const start = (currentPage - 1) * perPage + 1;
-        const end = Math.min(currentPage * perPage, responseData.total_records);
-        document.getElementById('record-count').textContent = `Showing ${start}-${end} of ${responseData.total_records} Workers`;
-    }
-    
     // Reapply search filter after table update
     const searchInput = document.getElementById('search-input');
     if (searchInput && searchInput.value) {
         searchTable();
     }
+    
+    const recordCountEl = document.getElementById('record-count');
+    if (responseData && responseData.total_records !== undefined && recordCountEl) {
+        const currentPage = <?= $current_page ?>;
+        const perPage = <?= $per_page ?>;
+        const start = (currentPage - 1) * perPage + 1;
+        const end = Math.min(currentPage * perPage, responseData.total_records);
+        recordCountEl.textContent = `Showing ${start}-${end} of ${responseData.total_records} Workers`;
+    }
 }
 
-// Update system status indicator
 function updateSystemStatus(activeReaders) {
     const isSystemActive = activeReaders > 0;
     const statusIndicator = document.getElementById('system-status-indicator');

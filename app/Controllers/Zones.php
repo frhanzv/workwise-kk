@@ -105,6 +105,8 @@ class Zones extends BaseController
                 $animated = true;
             } elseif ($function == 'OUT ONLY') {
                 $functionColor = 'red';
+            } elseif ($function == 'LOOKUP') {
+                $functionColor = 'purple';
             }
             
             // Get antenna color from database or default to purple
@@ -195,6 +197,8 @@ class Zones extends BaseController
             $animated = true;
         } elseif ($function == 'OUT ONLY') {
             $functionColor = 'red';
+        } elseif ($function == 'LOOKUP') {
+            $functionColor = 'purple';
         }
         
         // Get icon data

@@ -217,6 +217,34 @@
         </div>
     </a>
     
+    <!-- Units of Measure -->
+    <a href="<?= base_url('config/units-of-measure') ?>" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:border-primary transition-colors">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="bg-cyan-500/10 dark:bg-cyan-500/20 p-2 rounded-lg">
+                <span class="material-symbols-outlined text-cyan-500 text-2xl">straighten</span>
+            </div>
+            <h2 class="text-gray-900 dark:text-white text-base font-semibold">Units of Measure</h2>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">Manage units for products and raw materials (pcs, kg, liter, etc.)</p>
+        <div class="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg transition-colors text-center">
+            Configure
+        </div>
+    </a>
+
+    <!-- Suppliers -->
+    <a href="<?= base_url('config/suppliers') ?>" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:border-primary transition-colors">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="bg-amber-500/10 dark:bg-amber-500/20 p-2 rounded-lg">
+                <span class="material-symbols-outlined text-amber-500 text-2xl">local_shipping</span>
+            </div>
+            <h2 class="text-gray-900 dark:text-white text-base font-semibold">Suppliers</h2>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">Manage supplier list for product master forms</p>
+        <div class="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg transition-colors text-center">
+            Configure
+        </div>
+    </a>
+
     <!-- RFID Settings -->
     <a href="<?= base_url('config/rfid-settings') ?>" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:border-primary transition-colors">
         <div class="flex items-center gap-3 mb-3">

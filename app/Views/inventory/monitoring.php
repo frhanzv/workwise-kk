@@ -14,8 +14,8 @@
         </div>
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <div class="relative w-full sm:w-52">
-                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-lg pointer-events-none">location_on</span>
-                <select id="zone-filter" onchange="changeZone(this.value)" class="w-full appearance-none rounded-lg border-none bg-gray-100 dark:bg-gray-800 py-2 pl-10 pr-8 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-base pointer-events-none">location_on</span>
+                <select id="zone-filter" onchange="changeZone(this.value)" class="w-full h-9 appearance-none rounded-lg border-none bg-gray-100 dark:bg-gray-800 pl-10 pr-8 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer">
                     <option value="">All Zones</option>
                     <?php foreach ($zones as $zone): ?>
                         <option value="<?= esc($zone['zone_id']) ?>" <?= ($selected_zone_id === $zone['zone_id']) ? 'selected' : '' ?>><?= esc($zone['zone_name']) ?></option>
@@ -23,10 +23,10 @@
                 </select>
             </div>
             <div class="relative">
-                <button id="dateFilterBtn" onclick="toggleDateFilter()" class="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 whitespace-nowrap">
-                    <span class="material-symbols-outlined text-lg">calendar_today</span>
+                <button id="dateFilterBtn" onclick="toggleDateFilter()" class="flex items-center gap-1.5 h-9 px-3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 whitespace-nowrap">
+                    <span class="material-symbols-outlined text-base leading-none">calendar_today</span>
                     <span id="dateFilterLabel"><?= esc($filter_label) ?></span>
-                    <span class="material-symbols-outlined text-lg">expand_more</span>
+                    <span class="material-symbols-outlined text-base leading-none">expand_more</span>
                 </button>
                 <div id="dateFilterDropdown" class="hidden absolute right-0 mt-2 w-56 bg-white dark:bg-background-dark border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
                     <div class="py-1">
@@ -42,28 +42,28 @@
                 </div>
             </div>
             <div class="relative w-full sm:w-64">
-                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">search</span>
-                <input id="search-input" onkeyup="filterTables()" class="w-full rounded-lg border-none bg-gray-100 dark:bg-gray-800 py-2 pl-10 pr-4 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-500" placeholder="Search code or name..." type="text"/>
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-base">search</span>
+                <input id="search-input" onkeyup="filterTables()" class="w-full h-9 rounded-lg border-none bg-gray-100 dark:bg-gray-800 pl-10 pr-4 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-500" placeholder="Search product ID, raw material ID, or name..." type="text"/>
             </div>
-            <div class="flex items-center gap-3 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center h-9 px-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                 <span id="current-time" class="text-sm font-black text-gray-900 dark:text-white tabular-nums tracking-tight"></span>
             </div>
-            <button onclick="manualRefresh()" class="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-primary/90 transition-colors">
-                <span class="material-symbols-outlined text-base">refresh</span>
+            <button onclick="manualRefresh()" class="flex items-center justify-center gap-2 h-9 px-4 bg-primary text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-primary/90 transition-colors whitespace-nowrap">
+                <span class="material-symbols-outlined text-base leading-none">refresh</span>
                 Refresh
             </button>
         </div>
     </div>
 
     <!-- Stats -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div class="bg-white dark:bg-background-dark p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm cursor-pointer hover:border-blue-400/50 hover:shadow-md transition-all" onclick="openProductsStatModal()">
             <div class="flex items-center justify-between mb-2">
                 <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Products</p>
                 <span class="material-symbols-outlined text-blue-500">inventory_2</span>
             </div>
             <p id="stat-products" class="text-3xl font-black text-gray-900 dark:text-white tabular-nums"><?= esc($stats['products']) ?></p>
-            <p class="text-xs text-gray-400 mt-1" data-stat-period>Scanned <?= esc($filter_label) ?></p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" data-stat-period>Scanned <?= esc($filter_label) ?></p>
         </div>
         <div class="bg-white dark:bg-background-dark p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm cursor-pointer hover:border-amber-400/50 hover:shadow-md transition-all" onclick="openMaterialsStatModal()">
             <div class="flex items-center justify-between mb-2">
@@ -71,7 +71,7 @@
                 <span class="material-symbols-outlined text-amber-500">category</span>
             </div>
             <p id="stat-materials" class="text-3xl font-black text-gray-900 dark:text-white tabular-nums"><?= esc($stats['materials']) ?></p>
-            <p class="text-xs text-gray-400 mt-1" data-stat-period>Scanned <?= esc($filter_label) ?></p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" data-stat-period>Scanned <?= esc($filter_label) ?></p>
         </div>
         <div class="bg-white dark:bg-background-dark p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm cursor-pointer hover:border-primary/50 hover:shadow-md transition-all" onclick="openTotalStatModal()">
             <div class="flex items-center justify-between mb-2">
@@ -79,19 +79,86 @@
                 <span class="material-symbols-outlined text-primary">radar</span>
             </div>
             <p id="stat-total" class="text-3xl font-black text-gray-900 dark:text-white tabular-nums"><?= esc($stats['total']) ?></p>
-            <p class="text-xs text-gray-400 mt-1">Products + materials</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Products + materials</p>
         </div>
         <div class="bg-white dark:bg-background-dark p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm cursor-pointer hover:border-green-400/50 hover:shadow-md transition-all" onclick="openScansStatModal()">
             <div class="flex items-center justify-between mb-2">
-                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider" id="stat-today-label">Scans</p>
+                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Zone Scans</p>
                 <span class="material-symbols-outlined text-green-500">today</span>
             </div>
             <p id="stat-today" class="text-3xl font-black text-gray-900 dark:text-white tabular-nums"><?= esc($stats['scanned_today']) ?></p>
-            <p id="stat-today-sub" class="text-xs text-gray-400 mt-1"><?= esc($filter_label) ?></p>
+            <p id="stat-today-sub" class="text-xs text-gray-400 dark:text-gray-500 mt-1"><?= esc($filter_label) ?></p>
+        </div>
+        <div class="bg-white dark:bg-background-dark p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm cursor-pointer hover:border-indigo-400/50 hover:shadow-md transition-all" onclick="openInventoryStatModal()">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Inventory</p>
+                <span class="material-symbols-outlined text-indigo-500">inventory</span>
+            </div>
+            <p id="stat-inventory-qty" class="text-3xl font-black text-gray-900 dark:text-white tabular-nums"><?= format_inventory_qty($inventory_totals['total_qty'] ?? 0) ?></p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Combined stock balance</p>
         </div>
     </div>
 
-    <!-- Recent Scans -->
+    <!-- Stock Transactions (latest first) -->
+    <div class="bg-white dark:bg-background-dark border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
+        <div class="px-4 lg:px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-100 dark:bg-indigo-900/20 p-2 rounded-lg">
+                    <span class="material-symbols-outlined text-indigo-600 dark:text-indigo-400">swap_horiz</span>
+                </div>
+                <div>
+                    <h2 class="text-sm font-extrabold text-gray-900 dark:text-white uppercase tracking-wider">Stock Transactions</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Stock In / Stock Out · <?= esc($filter_label) ?></p>
+                </div>
+            </div>
+            <span id="txn-count" class="text-xs font-bold px-2.5 py-1 bg-indigo-100 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 rounded-full"><?= count($stock_transactions ?? []) ?> Records</span>
+        </div>
+        <div class="overflow-x-auto max-h-80 overflow-y-auto">
+            <table class="w-full text-left border-collapse" id="transactions-table">
+                <thead class="sticky top-0 bg-gray-50 dark:bg-gray-800/90">
+                    <tr class="border-b border-gray-200 dark:border-gray-700">
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Date/Time</th>
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Type</th>
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Item</th>
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Movement</th>
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Qty</th>
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Balance</th>
+                        <th class="px-4 py-3 text-xs font-black text-gray-500 dark:text-gray-300 uppercase">Method</th>
+                    </tr>
+                </thead>
+                <tbody id="transactions-body" class="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                    <?php if (empty($stock_transactions)): ?>
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400 text-sm">No stock transactions for this period.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($stock_transactions as $txn): ?>
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                                <td class="px-4 py-3 text-xs tabular-nums text-gray-600 dark:text-gray-300"><?= esc($txn['datetime']) ?></td>
+                                <td class="px-4 py-3 text-xs text-gray-900 dark:text-gray-100"><?= esc($txn['type_label']) ?></td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs font-mono text-primary dark:text-blue-400"><?= esc($txn['code']) ?></span>
+                                    <span class="block text-xs text-gray-600 dark:text-gray-400 truncate max-w-[160px]"><?= esc($txn['name']) ?></span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <?php if ($txn['transaction_type'] === 'stock_in'): ?>
+                                        <span class="text-xs font-bold text-green-600 dark:text-green-400">Stock In</span>
+                                    <?php elseif ($txn['transaction_type'] === 'stock_out'): ?>
+                                        <span class="text-xs font-bold text-red-600 dark:text-red-400">Stock Out</span>
+                                    <?php else: ?>
+                                        <span class="text-xs font-bold text-amber-600 dark:text-amber-400">Stock Check</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-4 py-3 text-xs font-bold tabular-nums text-gray-900 dark:text-white"><?= format_inventory_qty($txn['quantity']) ?></td>
+                                <td class="px-4 py-3 text-xs font-bold tabular-nums text-gray-900 dark:text-white"><?= format_inventory_qty($txn['balance_after']) ?></td>
+                                <td class="px-4 py-3 text-xs uppercase text-gray-500 dark:text-gray-400"><?= esc($txn['scan_method']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Zone Activity (RFID) -->
     <div class="bg-white dark:bg-background-dark border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
         <div class="px-4 lg:px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -99,8 +166,8 @@
                     <span class="material-symbols-outlined text-primary">history</span>
                 </div>
                 <div>
-                    <h2 class="text-sm font-extrabold text-gray-900 dark:text-white uppercase tracking-wider">Recent Scans</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Last Updated: <span id="last-updated-time"><?= esc($last_updated) ?></span></p>
+                    <h2 class="text-sm font-extrabold text-gray-900 dark:text-white uppercase tracking-wider">Zone Activity (RFID)</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Tag location · not stock quantity · Last Updated: <span id="last-updated-time"><?= esc($last_updated) ?></span></p>
                 </div>
             </div>
             <span id="recent-count" class="text-xs font-bold px-2.5 py-1 bg-primary/10 text-primary rounded-full"><?= count($recent_scans) ?> Items</span>
@@ -117,11 +184,11 @@
                         <?= $invSortWrap('Type', 'type') ?>
                         <?= $invSortWrap('Raw Material/Product ID', 'code') ?>
                         <?= $invSortWrap('Name', 'name') ?>
+                        <?= $invSortWrap('Balance', 'balance') ?>
                         <?= $invSortWrap('Zone', 'zone') ?>
-                        <?= $invSortWrap('Status', 'status') ?>
-                        <?= $invSortWrap('Time In', 'time_in') ?>
-                        <?= $invSortWrap('Time Out', 'time_out') ?>
-                        <?= $invSortWrap('Duration', 'duration') ?>
+                        <?= $invSortWrap('Presence', 'status') ?>
+                        <?= $invSortWrap('Entered', 'time_in') ?>
+                        <?= $invSortWrap('Left', 'time_out') ?>
                     </tr>
                 </thead>
                 <tbody id="recent-body" class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -157,8 +224,8 @@
                             ?>
                             <?= $sideSortWrap('Product ID', 'code') ?>
                             <?= $sideSortWrap('Name', 'name') ?>
-                            <?= $sideSortWrap('Status', 'status') ?>
-                            <?= $sideSortWrap('Duration', 'duration') ?>
+                            <?= $sideSortWrap('Current Zone', 'current_zone') ?>
+                            <?= $sideSortWrap('Balance', 'balance') ?>
                         </tr>
                     </thead>
                     <tbody id="products-body" class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -187,8 +254,8 @@
                         <tr class="border-b border-gray-200 dark:border-gray-700">
                             <?= $sideSortWrap('Raw Material ID', 'code') ?>
                             <?= $sideSortWrap('Name', 'name') ?>
-                            <?= $sideSortWrap('Status', 'status') ?>
-                            <?= $sideSortWrap('Duration', 'duration') ?>
+                            <?= $sideSortWrap('Current Zone', 'current_zone') ?>
+                            <?= $sideSortWrap('Balance', 'balance') ?>
                         </tr>
                     </thead>
                     <tbody id="materials-body" class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -260,7 +327,13 @@
         </div>
 
         <div id="itemModalContent" class="flex-1 overflow-y-auto">
+            <div id="itemModalStockSummary" class="hidden grid grid-cols-3 gap-2 px-5 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-background-dark"></div>
             <div id="itemModalDetails" class="grid grid-cols-2 gap-3 px-5 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40"></div>
+
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Stock Movements</p>
+                <div id="itemModalStockTxns" class="text-xs text-gray-500 max-h-32 overflow-y-auto"></div>
+            </div>
 
             <div class="px-5 py-4">
                 <p id="itemModalScanTitle" class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Zone Activity</p>
@@ -268,10 +341,10 @@
                     <thead>
                         <tr class="text-xs text-gray-400 border-b border-gray-100 dark:border-gray-700">
                             <th class="pb-2 text-left font-medium">Zone</th>
-                            <th class="pb-2 text-left font-medium">Status</th>
-                            <th class="pb-2 text-left font-medium">Time In</th>
-                            <th class="pb-2 text-left font-medium">Time Out</th>
-                            <th class="pb-2 text-left font-medium">Duration</th>
+                            <th class="pb-2 text-left font-medium">EPC Tag</th>
+                            <th class="pb-2 text-left font-medium">Presence</th>
+                            <th class="pb-2 text-left font-medium">Entered</th>
+                            <th class="pb-2 text-left font-medium">Left</th>
                         </tr>
                     </thead>
                     <tbody id="itemModalScansBody" class="divide-y divide-gray-100 dark:divide-gray-700/60 text-xs"></tbody>
@@ -311,11 +384,20 @@ let monitoringModalData = {
     products: <?= json_encode($products ?? []) ?>,
     materials: <?= json_encode($materials ?? []) ?>,
     allScans: <?= json_encode($all_scans ?? []) ?>,
+    stockTransactions: <?= json_encode($stock_transactions ?? []) ?>,
+    inventoryTotals: <?= json_encode($inventory_totals ?? []) ?>,
+    inventoryBreakdown: <?= json_encode($inventory_breakdown ?? []) ?>,
 };
 let recentScansData = <?= json_encode($recent_scans ?? []) ?>;
 const recentSortState = { column: 'time_in', dir: 'desc' };
-const productsSortState = { column: 'duration', dir: 'desc' };
-const materialsSortState = { column: 'duration', dir: 'desc' };
+const productsSortState = { column: 'code', dir: 'asc' };
+const materialsSortState = { column: 'code', dir: 'asc' };
+
+function formatInventoryQty(n) {
+    const v = Number(n) || 0;
+    if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+    return v.toFixed(3).replace(/\.?0+$/, '');
+}
 
 function sortRecentScans(scans) {
     if (!scans || !scans.length) return scans || [];
@@ -326,10 +408,10 @@ function sortRecentScans(scans) {
             case 'code': return s.code;
             case 'name': return s.name;
             case 'zone': return s.zone_name;
+            case 'balance': return s.balance ?? 0;
             case 'status': return s.status;
             case 'time_in': return s.check_in_ts ?? parseClockMinutes(s.time_in);
             case 'time_out': return parseClockMinutes(s.time_out);
-            case 'duration': return s.check_in_ts ?? parseDurationSeconds(s.duration);
             default: return s.check_in_ts ?? parseClockMinutes(s.time_in);
         }
     }, dir);
@@ -342,27 +424,28 @@ function sortSideItems(items, codeKey, nameKey, state) {
         switch (column) {
             case 'code': return item[codeKey];
             case 'name': return item[nameKey];
+            case 'balance': return item.balance ?? 0;
+            case 'current_zone': return item.current_zone ?? '';
             case 'status': return item.status;
-            case 'duration': return item.check_in_ts ?? parseDurationSeconds(item.duration);
             default: return item[codeKey];
         }
     }, dir);
 }
 
 function handleRecentSort(column) {
-    toggleSortState(recentSortState, column, ['time_in', 'time_out', 'duration'].includes(column) ? 'desc' : 'asc');
+    toggleSortState(recentSortState, column, ['time_in', 'time_out'].includes(column) ? 'desc' : 'asc');
     updateSortableHeaders(document.getElementById('recent-table'), recentSortState.column, recentSortState.dir);
     paintRecentTable();
 }
 
 function handleProductsSort(column) {
-    toggleSortState(productsSortState, column, ['duration'].includes(column) ? 'desc' : 'asc');
+    toggleSortState(productsSortState, column, 'asc');
     updateSortableHeaders(document.getElementById('products-table'), productsSortState.column, productsSortState.dir);
     paintProductTable();
 }
 
 function handleMaterialsSort(column) {
-    toggleSortState(materialsSortState, column, ['duration'].includes(column) ? 'desc' : 'asc');
+    toggleSortState(materialsSortState, column, 'asc');
     updateSortableHeaders(document.getElementById('materials-table'), materialsSortState.column, materialsSortState.dir);
     paintMaterialTable();
 }
@@ -371,9 +454,17 @@ function updateMonitoringModalData(data) {
     monitoringModalData.products = data.products || [];
     monitoringModalData.materials = data.materials || [];
     monitoringModalData.allScans = data.all_scans || [];
+    monitoringModalData.stockTransactions = data.stock_transactions || [];
+    monitoringModalData.inventoryTotals = data.inventory_totals || {};
+    monitoringModalData.inventoryBreakdown = data.inventory_breakdown || [];
     recentScansData = data.recent_scans || [];
     if (data.filter_label) {
         monitoringModalData.filterLabel = data.filter_label;
+    }
+    updateTransactionsTable(data.stock_transactions || []);
+    if (data.inventory_totals) {
+        const el = document.getElementById('stat-inventory-qty');
+        if (el) el.textContent = formatInventoryQty(data.inventory_totals.total_qty || 0);
     }
 }
 
@@ -418,8 +509,8 @@ function productStatRows() {
     return (monitoringModalData.products || []).map(p => ({
         label: p.product_name,
         sub: p.product_code,
-        val: (p.status || '—') + (p.duration ? ' · ' + p.duration : ''),
-        cls: p.status === 'IN' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300',
+        val: (p.current_zone || '—') + ' · Bal ' + formatInventoryQty(p.balance ?? 0),
+        cls: 'text-gray-600 dark:text-gray-300',
         itemType: 'product',
         itemId: p.id,
     }));
@@ -429,8 +520,8 @@ function materialStatRows() {
     return (monitoringModalData.materials || []).map(m => ({
         label: m.material_name,
         sub: m.material_code,
-        val: (m.status || '—') + (m.duration ? ' · ' + m.duration : ''),
-        cls: m.status === 'IN' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300',
+        val: (m.current_zone || '—') + ' · Bal ' + formatInventoryQty(m.balance ?? 0),
+        cls: 'text-gray-600 dark:text-gray-300',
         itemType: 'raw_material',
         itemId: m.id,
     }));
@@ -455,12 +546,29 @@ function openTotalStatModal() {
     openListModal('Total Tracked', 'All unique items scanned · ' + label, rows);
 }
 
+function inventoryStatRows() {
+    return (monitoringModalData.inventoryBreakdown || []).map(item => ({
+        label: item.name,
+        sub: (item.type === 'product' ? 'Product' : 'Raw Material') + ' · ' + item.code,
+        val: formatInventoryQty(item.balance ?? 0) + (item.current_zone && item.current_zone !== '—' ? ' · ' + item.current_zone : ''),
+        cls: 'text-indigo-600 dark:text-indigo-400',
+        itemType: item.type,
+        itemId: item.id,
+    }));
+}
+
+function openInventoryStatModal() {
+    const totals = monitoringModalData.inventoryTotals || {};
+    const subtitle = 'Products ' + formatInventoryQty(totals.products_qty || 0) + ' + Materials ' + formatInventoryQty(totals.materials_qty || 0);
+    openListModal('Total Inventory', subtitle, inventoryStatRows());
+}
+
 function openScansStatModal() {
     const label = monitoringModalData.filterLabel || 'this period';
     const rows = (monitoringModalData.allScans || []).map(s => ({
         label: s.name,
         sub: (s.type_label || s.type) + ' · ' + s.code + ' · ' + s.zone_name,
-        val: s.time_in + (s.status ? ' · ' + s.status : ''),
+        val: s.zone_name + ' · ' + (s.presence_label || (s.status === 'IN' ? 'In Zone' : 'Left Zone')) + ' · ' + s.time_in,
         cls: s.status === 'IN' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300',
         itemType: s.type,
         itemId: s.item_id,
@@ -526,22 +634,13 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function formatDuration(seconds) {
-    seconds = Math.max(0, parseInt(seconds, 10) || 0);
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-}
-
-function statusBadge(status) {
+function zonePresenceBadge(status, label) {
+    const text = label || (status === 'IN' ? 'In Zone' : status === 'OUT' ? 'Left Zone' : '—');
     if (status === 'IN') {
-        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 uppercase">IN</span>';
+        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300">' + escapeHtml(text) + '</span>';
     }
     if (status === 'OUT') {
-        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 uppercase">OUT</span>';
+        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">' + escapeHtml(text) + '</span>';
     }
     return '<span class="text-xs text-gray-400">—</span>';
 }
@@ -566,7 +665,7 @@ function updateRecentTable(scans) {
     if (!scans || scans.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
             <span class="material-symbols-outlined text-4xl block mb-2 text-gray-300">rss_feed</span>
-            No scan records for this period. Items appear here after RFID zone IN/OUT scans.
+            No zone activity for this period. RFID scans appear when a tagged item enters or leaves a zone.
         </td></tr>`;
         return;
     }
@@ -576,20 +675,17 @@ function updateRecentTable(scans) {
             ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">Product</span>'
             : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300">Raw Material</span>';
         const search = (scan.code + ' ' + scan.name + ' ' + scan.zone_name).toLowerCase();
-        const durationClass = scan.is_live ? 'text-green-600 dark:text-green-400 font-medium' : '';
-        const durationAttr = scan.is_live && scan.check_in_ts ? `data-check-in-ts="${scan.check_in_ts}"` : '';
         return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors scan-row cursor-pointer" data-item-type="${escapeHtml(scan.type)}" data-item-id="${scan.item_id}" data-search="${escapeHtml(search)}">
             <td class="px-4 lg:px-6 py-3">${typeBadge}</td>
             <td class="px-4 lg:px-6 py-3"><span class="text-sm font-mono font-bold text-primary">${escapeHtml(scan.code)}</span></td>
             <td class="px-4 lg:px-6 py-3 text-sm font-semibold text-gray-900 dark:text-white">${escapeHtml(scan.name)}</td>
+            <td class="px-4 lg:px-6 py-3 text-xs font-bold tabular-nums text-indigo-600 dark:text-indigo-400">${formatInventoryQty(scan.balance ?? 0)}</td>
             <td class="px-4 lg:px-6 py-3 text-sm text-gray-600 dark:text-gray-300">${escapeHtml(scan.zone_name)}</td>
-            <td class="px-4 lg:px-6 py-3">${statusBadge(scan.status)}</td>
+            <td class="px-4 lg:px-6 py-3">${zonePresenceBadge(scan.status, scan.presence_label)}</td>
             <td class="px-4 lg:px-6 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 tabular-nums">${escapeHtml(scan.time_in)}</td>
             <td class="px-4 lg:px-6 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 tabular-nums">${escapeHtml(scan.time_out)}</td>
-            <td class="px-4 lg:px-6 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 tabular-nums ${durationClass}" ${durationAttr}>${escapeHtml(scan.duration)}</td>
         </tr>`;
     }).join('');
-    updateLiveDurations();
 }
 
 function updateItemTable(tbodyId, items, itemType, codeKey, nameKey, emptyMsg) {
@@ -600,16 +696,13 @@ function updateItemTable(tbodyId, items, itemType, codeKey, nameKey, emptyMsg) {
     }
     tbody.innerHTML = items.map(item => {
         const search = (item[codeKey] + ' ' + item[nameKey]).toLowerCase();
-        const durationClass = item.is_live ? 'text-green-600 dark:text-green-400 font-medium' : '';
-        const durationAttr = item.is_live && item.check_in_ts ? `data-check-in-ts="${item.check_in_ts}"` : '';
         return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/30 item-row cursor-pointer" data-item-type="${itemType}" data-item-id="${item.id}" data-search="${escapeHtml(search)}">
             <td class="px-4 py-3"><span class="text-xs font-mono font-bold text-primary">${escapeHtml(item[codeKey])}</span></td>
             <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">${escapeHtml(item[nameKey])}</td>
-            <td class="px-4 py-3">${statusBadge(item.status)}</td>
-            <td class="px-4 py-3 text-xs font-bold text-gray-500 tabular-nums ${durationClass}" ${durationAttr}>${escapeHtml(item.duration)}</td>
+            <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">${escapeHtml(item.current_zone || '—')}</td>
+            <td class="px-4 py-3 text-xs font-bold tabular-nums text-indigo-600 dark:text-indigo-400">${formatInventoryQty(item.balance ?? 0)}</td>
         </tr>`;
     }).join('');
-    updateLiveDurations();
 }
 
 function updateProductTable(products) {
@@ -630,6 +723,10 @@ function updateStats(stats, filterLabel) {
     document.getElementById('stat-materials').textContent = stats.materials;
     document.getElementById('stat-total').textContent = stats.total;
     document.getElementById('stat-today').textContent = stats.scanned_today;
+    if (stats.inventory_qty !== undefined) {
+        const el = document.getElementById('stat-inventory-qty');
+        if (el) el.textContent = formatInventoryQty(stats.inventory_qty);
+    }
     if (filterLabel) {
         document.getElementById('stat-today-sub').textContent = filterLabel;
         document.querySelectorAll('[data-stat-period]').forEach(el => {
@@ -638,13 +735,29 @@ function updateStats(stats, filterLabel) {
     }
 }
 
-function updateLiveDurations() {
-    const now = Math.floor(Date.now() / 1000) + serverTimeOffset;
-    document.querySelectorAll('[data-check-in-ts]').forEach(cell => {
-        const checkIn = parseInt(cell.dataset.checkInTs, 10);
-        if (!checkIn) return;
-        cell.textContent = formatDuration(now - checkIn);
-    });
+function updateTransactionsTable(transactions) {
+    const tbody = document.getElementById('transactions-body');
+    const badge = document.getElementById('txn-count');
+    if (badge) badge.textContent = (transactions ? transactions.length : 0) + ' Records';
+    if (!tbody) return;
+    if (!transactions || transactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-400 text-sm">No stock transactions for this period.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = transactions.map(txn => {
+        let move = '<span class="text-xs font-bold text-amber-600 dark:text-amber-400">Stock Check</span>';
+        if (txn.transaction_type === 'stock_in') move = '<span class="text-xs font-bold text-green-600 dark:text-green-400">Stock In</span>';
+        if (txn.transaction_type === 'stock_out') move = '<span class="text-xs font-bold text-red-600 dark:text-red-400">Stock Out</span>';
+        return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+            <td class="px-4 py-3 text-xs tabular-nums text-gray-600 dark:text-gray-300">${escapeHtml(txn.datetime)}</td>
+            <td class="px-4 py-3 text-xs text-gray-900 dark:text-gray-100">${escapeHtml(txn.type_label)}</td>
+            <td class="px-4 py-3"><span class="text-xs font-mono text-primary dark:text-blue-400">${escapeHtml(txn.code)}</span><span class="block text-xs text-gray-600 dark:text-gray-400 truncate max-w-[160px]">${escapeHtml(txn.name)}</span></td>
+            <td class="px-4 py-3">${move}</td>
+            <td class="px-4 py-3 text-xs font-bold tabular-nums text-gray-900 dark:text-white">${formatInventoryQty(txn.quantity)}</td>
+            <td class="px-4 py-3 text-xs font-bold tabular-nums text-gray-900 dark:text-white">${formatInventoryQty(txn.balance_after)}</td>
+            <td class="px-4 py-3 text-xs uppercase text-gray-500 dark:text-gray-400">${escapeHtml(txn.scan_method)}</td>
+        </tr>`;
+    }).join('');
 }
 
 async function updateMonitoringData() {
@@ -731,10 +844,35 @@ async function openItemModal(type, id) {
         document.getElementById('itemModalName').textContent = item.name;
         document.getElementById('itemModalMeta').textContent = `${data.type_label} · ${item.code}`;
 
+        const summaryEl = document.getElementById('itemModalStockSummary');
+        const summary = data.stock_summary || {};
+        if (summary.total_stock_in !== undefined) {
+            summaryEl.classList.remove('hidden');
+            summaryEl.innerHTML = `
+                <div class="text-center p-2 rounded-lg bg-green-50 dark:bg-green-900/20"><p class="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase">Stock In</p><p class="text-lg font-black text-green-800 dark:text-green-300 tabular-nums">${formatInventoryQty(summary.total_stock_in || 0)}</p></div>
+                <div class="text-center p-2 rounded-lg bg-red-50 dark:bg-red-900/20"><p class="text-[10px] font-bold text-red-700 dark:text-red-400 uppercase">Stock Out</p><p class="text-lg font-black text-red-800 dark:text-red-300 tabular-nums">${formatInventoryQty(summary.total_stock_out || 0)}</p></div>
+                <div class="text-center p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20"><p class="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase">Balance</p><p class="text-lg font-black text-indigo-800 dark:text-indigo-300 tabular-nums">${formatInventoryQty(summary.balance || 0)}</p></div>`;
+        } else {
+            summaryEl.classList.add('hidden');
+        }
+
+        const txnsEl = document.getElementById('itemModalStockTxns');
+        const stockTxns = data.stock_transactions || [];
+        if (!stockTxns.length) {
+            txnsEl.innerHTML = '<p class="text-gray-400 italic">No stock movements yet. Use product detail page to record stock in/out.</p>';
+        } else {
+            txnsEl.innerHTML = '<table class="w-full text-sm"><thead><tr class="text-gray-500 dark:text-gray-400"><th class="text-left pb-1">Date</th><th class="text-left pb-1">Type</th><th class="text-right pb-1">Qty</th><th class="text-right pb-1">Bal</th></tr></thead><tbody>' +
+                stockTxns.map(t => {
+                    const cls = t.transaction_type === 'stock_in' ? 'text-green-600 dark:text-green-400' : (t.transaction_type === 'stock_out' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400');
+                    const lbl = t.transaction_label || t.transaction_type;
+                    return `<tr class="text-gray-700 dark:text-gray-200"><td class="py-1 pr-2 tabular-nums">${escapeHtml(t.datetime)}</td><td class="py-1 pr-2 ${cls} font-bold">${escapeHtml(lbl)}</td><td class="py-1 text-right tabular-nums text-gray-900 dark:text-white font-bold">${formatInventoryQty(t.quantity)}</td><td class="py-1 text-right tabular-nums text-gray-900 dark:text-white">${formatInventoryQty(t.balance_after)}</td></tr>`;
+                }).join('') + '</tbody></table>';
+        }
+
         const detailsEl = document.getElementById('itemModalDetails');
         const fields = data.detail_fields || [];
-        detailsEl.innerHTML = fields.map(f => {
-            const mono = (f.label === 'EPC Tag' || f.label === 'Reference Number' || f.label === 'SAP Code') ? ' font-mono' : '';
+        detailsEl.innerHTML = fields.filter(f => !['Total Stock In', 'Total Stock Out', 'Balance'].includes(f.label)).map(f => {
+            const mono = (f.label === 'EPC Tag' || f.label === 'Product ID' || f.label === 'Raw Material ID' || f.label === 'SAP Code') ? ' font-mono' : '';
             return `<div>
                 <p class="text-xs text-gray-400 mb-0.5">${escapeHtml(f.label)}</p>
                 <p class="text-gray-900 dark:text-white font-bold text-sm${mono}">${escapeHtml(String(f.value ?? '—'))}</p>
@@ -752,14 +890,16 @@ async function openItemModal(type, id) {
         } else {
             noScans.classList.add('hidden');
             scansBody.innerHTML = data.scan_records.map(scan => {
-                const statusHtml = statusBadge(scan.status);
-                const durationClass = scan.is_live ? 'text-green-600 dark:text-green-400 font-medium' : '';
+                const statusHtml = zonePresenceBadge(scan.status, scan.presence_label);
+                const epcHtml = scan.tag_epc
+                    ? `<span class="font-mono text-purple-600 dark:text-purple-400 break-all">${escapeHtml(scan.tag_epc)}</span>`
+                    : '<span class="text-gray-400">—</span>';
                 return `<tr>
                     <td class="py-2 pr-2 text-gray-900 dark:text-white">${escapeHtml(scan.zone_name)}</td>
+                    <td class="py-2 pr-2">${epcHtml}</td>
                     <td class="py-2 pr-2">${statusHtml}</td>
-                    <td class="py-2 pr-2 tabular-nums text-gray-500">${escapeHtml(scan.time_in)}</td>
-                    <td class="py-2 pr-2 tabular-nums text-gray-500">${escapeHtml(scan.time_out)}</td>
-                    <td class="py-2 tabular-nums ${durationClass}">${escapeHtml(scan.duration)}</td>
+                    <td class="py-2 pr-2 tabular-nums text-gray-500 dark:text-gray-400">${escapeHtml(scan.time_in)}</td>
+                    <td class="py-2 tabular-nums text-gray-500 dark:text-gray-400">${escapeHtml(scan.time_out)}</td>
                 </tr>`;
             }).join('');
         }
@@ -790,7 +930,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateClock();
     setInterval(updateClock, 1000);
-    setInterval(updateLiveDurations, 1000);
     updateInterval = setInterval(updateMonitoringData, 5000);
 
     document.addEventListener('click', (e) => {

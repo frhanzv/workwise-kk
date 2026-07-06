@@ -20,7 +20,7 @@
     <div class="bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
         <form action="<?= base_url('products/update/' . $product['id']) ?>" method="post" class="p-6 space-y-8">
             <?= csrf_field() ?>
-            <?= view('products/_form', ['record' => $product, 'product_code' => $product['product_code'], 'zones' => $zones ?? []]) ?>
+            <?= view('products/_form', ['record' => $product, 'product_code' => $product['product_code'], 'zones' => $zones ?? [], 'tags' => $tags ?? []]) ?>
             <div class="flex items-center justify-end gap-3 pt-2">
                 <a href="<?= base_url('products/view/' . $product['id']) ?>" class="h-10 px-5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center">Cancel</a>
                 <button type="submit" class="h-10 px-5 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors">Save Changes</button>

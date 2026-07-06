@@ -32,8 +32,17 @@ class RawMaterialModel extends Model
         'supplier_shelf_life_months',
         'category',
         'description',
+        'suppliers',
+        'storage_location',
+        'expiry_date',
+        'cost_price',
+        'selling_price',
         'epc_no',
+        'tag_mode',
+        'qty_per_tag',
         'unit',
+        'quantity_on_hand',
+        'qr_code',
         'last_seen_zone',
         'last_seen_at',
         'status',
@@ -90,5 +99,22 @@ class RawMaterialModel extends Model
         return $this->select('raw_materials.*, zones.zone_name')
                     ->join('zones', 'zones.zone_id = raw_materials.last_seen_zone', 'left')
                     ->findAll();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function decodeStorageLocations(?string $raw): array
+    {
+        return ProductModel::decodeStorageLocations($raw);
+    }
+
+    /**
+     * When storage locations are configured, only those zones may be entered.
+     * Empty list means no restriction (any zone allowed).
+     */
+    public static function isZoneAllowed(array $material, string $zoneId): bool
+    {
+        return ProductModel::isZoneAllowedForProduct($material, $zoneId);
     }
 }

@@ -36,6 +36,7 @@ class Filters extends BaseFilters
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
         'auth'          => \App\Filters\AuthFilter::class,
+        'apiauth'       => \App\Filters\ApiAuthFilter::class,
     ];
 
     /**
@@ -54,10 +55,8 @@ class Filters extends BaseFilters
     public array $required = [
         'before' => [
             'forcehttps', // Force Global Secure Requests
-            'pagecache',  // Web Page Caching
         ],
         'after' => [
-            'pagecache',   // Web Page Caching
             'performance', // Performance Metrics
             // 'toolbar',     // Debug Toolbar
         ],
@@ -74,13 +73,20 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
-            // 'honeypot',
-            // 'csrf',
-            // 'invalidchars',
+            'pagecache' => ['except' => [
+                'dashboard/live-data',
+                'workers/monitoring-data',
+                'workers/attendance-data',
+                'inventory/monitoring-data',
+            ]],
         ],
         'after' => [
-            // 'honeypot',
-            // 'secureheaders',
+            'pagecache' => ['except' => [
+                'dashboard/live-data',
+                'workers/monitoring-data',
+                'workers/attendance-data',
+                'inventory/monitoring-data',
+            ]],
         ],
     ];
 

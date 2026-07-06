@@ -187,6 +187,7 @@
                                             <option value="IN" <?= ($antenna['function'] == 'IN') ? 'selected' : '' ?>>IN</option>
                                             <option value="OUT" <?= ($antenna['function'] == 'OUT') ? 'selected' : '' ?>>OUT</option>
                                             <option value="IN / OUT" <?= ($antenna['function'] == 'IN / OUT') ? 'selected' : '' ?>>IN / OUT</option>
+                                            <option value="LOOKUP" <?= ($antenna['function'] == 'LOOKUP') ? 'selected' : '' ?>>LOOKUP (Search Stock desk — no stock change)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -258,6 +259,7 @@ function addAntenna() {
                     <option value="IN">IN</option>
                     <option value="OUT">OUT</option>
                     <option value="IN / OUT" selected>IN / OUT</option>
+                    <option value="LOOKUP">LOOKUP (Search Stock desk — no stock change)</option>
                 </select>
             </div>
         </div>

@@ -20,6 +20,21 @@ $routes->group('api/rfid', function($routes) {
     $routes->post('manual', 'RFID::manual');           // Manual attendance entry
 });
 
+// Mobile API (token auth)
+$routes->post('api/mobile/auth/login', 'Api\MobileAuth::login');
+$routes->group('api/mobile', ['filter' => 'apiauth'], function ($routes) {
+    $routes->post('auth/logout', 'Api\MobileAuth::logout');
+    $routes->get('inventory/lookup', 'Api\MobileInventory::lookup');
+    $routes->get('inventory/balance', 'Api\MobileInventory::balance');
+    $routes->get('inventory/total', 'Api\MobileInventory::totalInventory');
+    $routes->get('inventory/transactions', 'Api\MobileInventory::transactions');
+    $routes->post('inventory/stock-in', 'Api\MobileInventory::stockIn');
+    $routes->post('inventory/stock-out', 'Api\MobileInventory::stockOut');
+    $routes->post('inventory/stock-check/start', 'Api\MobileInventory::stockCheckStart');
+    $routes->post('inventory/stock-check/scan', 'Api\MobileInventory::stockCheckScan');
+    $routes->post('inventory/stock-check/complete', 'Api\MobileInventory::stockCheckComplete');
+});
+
 // Protected routes (require authentication)
 $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('location-selector', 'LocationSelector::index');
@@ -79,6 +94,21 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('inventory/monitoring', 'Inventory::monitoring');
     $routes->get('inventory/monitoring-data', 'Inventory::monitoringData');
     $routes->get('inventory/item-detail', 'Inventory::itemDetail');
+    $routes->get('inventory/stock-check', 'Inventory::stockCheck');
+    $routes->post('inventory/stock-check/start', 'Inventory::stockCheckStart');
+    $routes->post('inventory/stock-check/scan', 'Inventory::stockCheckScan');
+    $routes->post('inventory/stock-check/complete', 'Inventory::stockCheckComplete');
+    $routes->get('inventory/stock-ledger', 'Inventory::stockLedger');
+    $routes->get('inventory/location-mismatch', 'Inventory::locationMismatch');
+    $routes->get('inventory/search-stock', 'Inventory::searchStock');
+    $routes->get('inventory/search-stock/lookup', 'Inventory::searchStockLookup');
+    $routes->get('inventory/search-stock/scans', 'Inventory::searchStockScans');
+    $routes->get('inventory/finder', 'Inventory::finderSearch');
+    $routes->get('inventory/tag-stock-in', 'Inventory::tagStockIn');
+    $routes->get('inventory/tag-stock-in/item', 'Inventory::tagStockInItem');
+    $routes->get('inventory/tag-stock-in/preview', 'Inventory::tagStockInPreview');
+    $routes->post('inventory/tag-stock-in/submit', 'Inventory::tagStockInSubmit');
+    $routes->post('inventory/stock-movement', 'Inventory::stockMovement');
 
     // Products routes
     $routes->get('products', 'Products::index');
@@ -86,9 +116,16 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('products/add', 'Products::add');
     $routes->post('products/store', 'Products::store');
     $routes->get('products/view/(:num)', 'Products::view/$1');
+    $routes->post('products/stock-in/(:num)', 'Products::stockIn/$1');
+    $routes->post('products/stock-out/(:num)', 'Products::stockOut/$1');
     $routes->get('products/edit/(:num)', 'Products::edit/$1');
     $routes->post('products/update/(:num)', 'Products::update/$1');
     $routes->post('products/delete/(:num)', 'Products::delete/$1');
+    $routes->post('products/update-epc', 'Products::updateEpc');
+    $routes->get('products/tags/(:num)', 'Products::listTags/$1');
+    $routes->post('products/assign-tag', 'Products::assignTag');
+    $routes->post('products/remove-tag', 'Products::removeTag');
+    $routes->post('products/update-tag', 'Products::updateTag');
 
     // Raw Materials routes
     $routes->get('raw-materials', 'RawMaterials::index');
@@ -96,9 +133,16 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('raw-materials/add', 'RawMaterials::add');
     $routes->post('raw-materials/store', 'RawMaterials::store');
     $routes->get('raw-materials/view/(:num)', 'RawMaterials::view/$1');
+    $routes->post('raw-materials/stock-in/(:num)', 'RawMaterials::stockIn/$1');
+    $routes->post('raw-materials/stock-out/(:num)', 'RawMaterials::stockOut/$1');
     $routes->get('raw-materials/edit/(:num)', 'RawMaterials::edit/$1');
     $routes->post('raw-materials/update/(:num)', 'RawMaterials::update/$1');
     $routes->post('raw-materials/delete/(:num)', 'RawMaterials::delete/$1');
+    $routes->post('raw-materials/update-epc', 'RawMaterials::updateEpc');
+    $routes->get('raw-materials/tags/(:num)', 'RawMaterials::listTags/$1');
+    $routes->post('raw-materials/assign-tag', 'RawMaterials::assignTag');
+    $routes->post('raw-materials/remove-tag', 'RawMaterials::removeTag');
+    $routes->post('raw-materials/update-tag', 'RawMaterials::updateTag');
 
     // Production Batches routes
     $routes->get('production', 'ProductionBatches::index');
@@ -151,6 +195,16 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('config/leave-reasons/update', 'Config::updateLeaveReason');
     $routes->post('config/leave-reasons/toggle/(:num)', 'Config::toggleLeaveReason/$1');
     $routes->post('config/leave-reasons/delete/(:num)', 'Config::deleteLeaveReason/$1');
+    $routes->get('config/units-of-measure', 'Config::unitsOfMeasure');
+    $routes->post('config/units-of-measure/store', 'Config::storeUnitOfMeasure');
+    $routes->post('config/units-of-measure/update', 'Config::updateUnitOfMeasure');
+    $routes->post('config/units-of-measure/toggle/(:num)', 'Config::toggleUnitOfMeasure/$1');
+    $routes->post('config/units-of-measure/delete/(:num)', 'Config::deleteUnitOfMeasure/$1');
+    $routes->get('config/suppliers', 'Config::suppliers');
+    $routes->post('config/suppliers/store', 'Config::storeSupplier');
+    $routes->post('config/suppliers/update', 'Config::updateSupplier');
+    $routes->post('config/suppliers/toggle/(:num)', 'Config::toggleSupplier/$1');
+    $routes->post('config/suppliers/delete/(:num)', 'Config::deleteSupplier/$1');
     $routes->get('config/system-logs', 'Config::systemLogs');
     $routes->get('config/load-more-logs', 'Config::loadMoreLogs');
     $routes->get('config/groups-shift', 'Config::groupsShift');

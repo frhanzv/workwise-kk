@@ -16,6 +16,8 @@ use App\Models\GroupsShiftModel;
 use App\Models\StaffAvailabilityModel;
 use App\Models\StaffShiftAllocationModel;
 use App\Models\LeaveReasonModel;
+use App\Models\UnitOfMeasureModel;
+use App\Models\SupplierModel;
 use App\Models\WorkerModel;
 
 class Config extends BaseController
@@ -1781,4 +1783,152 @@ public function updateRole()
         return redirect()->back()->with('error', 'Failed to update role.');
     }
   }
+
+    public function unitsOfMeasure()
+    {
+        $model = new UnitOfMeasureModel();
+
+        return view('config/units_of_measure', [
+            'title' => 'Units of Measure',
+            'user'  => $this->getLoggedInUser(),
+            'units' => $model->orderBy('sort_order', 'ASC')->orderBy('label', 'ASC')->findAll(),
+        ]);
+    }
+
+    public function storeUnitOfMeasure()
+    {
+        $model = new UnitOfMeasureModel();
+
+        $data = [
+            'code'        => strtolower(trim((string) $this->request->getPost('code'))),
+            'label'       => trim((string) $this->request->getPost('label')),
+            'description' => $this->request->getPost('description') ?: null,
+            'sort_order'  => (int) ($this->request->getPost('sort_order') ?? 0),
+            'is_active'   => 1,
+        ];
+
+        if ($model->insert($data)) {
+            return redirect()->to(base_url('config/units-of-measure'))->with('success', 'Unit of measure added successfully.');
+        }
+
+        return redirect()->back()->withInput()->with('error', implode(', ', $model->errors()));
+    }
+
+    public function updateUnitOfMeasure()
+    {
+        $model = new UnitOfMeasureModel();
+        $id    = (int) $this->request->getPost('id');
+
+        $data = [
+            'id'          => $id,
+            'code'        => strtolower(trim((string) $this->request->getPost('code'))),
+            'label'       => trim((string) $this->request->getPost('label')),
+            'description' => $this->request->getPost('description') ?: null,
+            'sort_order'  => (int) ($this->request->getPost('sort_order') ?? 0),
+        ];
+
+        if ($model->update($id, $data)) {
+            return redirect()->to(base_url('config/units-of-measure'))->with('success', 'Unit of measure updated successfully.');
+        }
+
+        return redirect()->back()->withInput()->with('error', implode(', ', $model->errors()));
+    }
+
+    public function toggleUnitOfMeasure($id)
+    {
+        $model = new UnitOfMeasureModel();
+        $unit  = $model->find($id);
+
+        if (!$unit) {
+            return redirect()->to(base_url('config/units-of-measure'))->with('error', 'Unit not found.');
+        }
+
+        $model->update($id, ['is_active' => $unit['is_active'] ? 0 : 1]);
+
+        return redirect()->to(base_url('config/units-of-measure'))->with('success', 'Unit status updated.');
+    }
+
+    public function deleteUnitOfMeasure($id)
+    {
+        $model = new UnitOfMeasureModel();
+
+        if ($model->delete($id)) {
+            return redirect()->to(base_url('config/units-of-measure'))->with('success', 'Unit deleted.');
+        }
+
+        return redirect()->to(base_url('config/units-of-measure'))->with('error', 'Failed to delete unit.');
+    }
+
+    public function suppliers()
+    {
+        $model = new SupplierModel();
+
+        return view('config/suppliers', [
+            'title'     => 'Suppliers',
+            'user'      => $this->getLoggedInUser(),
+            'suppliers' => $model->orderBy('sort_order', 'ASC')->orderBy('name', 'ASC')->findAll(),
+        ]);
+    }
+
+    public function storeSupplier()
+    {
+        $model = new SupplierModel();
+
+        $data = [
+            'name'        => trim((string) $this->request->getPost('name')),
+            'description' => $this->request->getPost('description') ?: null,
+            'sort_order'  => (int) ($this->request->getPost('sort_order') ?? 0),
+            'is_active'   => 1,
+        ];
+
+        if ($model->insert($data)) {
+            return redirect()->to(base_url('config/suppliers'))->with('success', 'Supplier added successfully.');
+        }
+
+        return redirect()->back()->withInput()->with('error', implode(', ', $model->errors()));
+    }
+
+    public function updateSupplier()
+    {
+        $model = new SupplierModel();
+        $id    = (int) $this->request->getPost('id');
+
+        $data = [
+            'id'          => $id,
+            'name'        => trim((string) $this->request->getPost('name')),
+            'description' => $this->request->getPost('description') ?: null,
+            'sort_order'  => (int) ($this->request->getPost('sort_order') ?? 0),
+        ];
+
+        if ($model->update($id, $data)) {
+            return redirect()->to(base_url('config/suppliers'))->with('success', 'Supplier updated successfully.');
+        }
+
+        return redirect()->back()->withInput()->with('error', implode(', ', $model->errors()));
+    }
+
+    public function toggleSupplier($id)
+    {
+        $model    = new SupplierModel();
+        $supplier = $model->find($id);
+
+        if (!$supplier) {
+            return redirect()->to(base_url('config/suppliers'))->with('error', 'Supplier not found.');
+        }
+
+        $model->update($id, ['is_active' => $supplier['is_active'] ? 0 : 1]);
+
+        return redirect()->to(base_url('config/suppliers'))->with('success', 'Supplier status updated.');
+    }
+
+    public function deleteSupplier($id)
+    {
+        $model = new SupplierModel();
+
+        if ($model->delete($id)) {
+            return redirect()->to(base_url('config/suppliers'))->with('success', 'Supplier deleted.');
+        }
+
+        return redirect()->to(base_url('config/suppliers'))->with('error', 'Failed to delete supplier.');
+    }
 }

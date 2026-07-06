@@ -92,6 +92,8 @@
                     $functionColor = 'green';
                 } elseif ($antenna['function'] == 'OUT' || $antenna['function'] == 'OUT ONLY') {
                     $functionColor = 'red';
+                } elseif ($antenna['function'] == 'LOOKUP') {
+                    $functionColor = 'purple';
                 }
             ?>
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-5 bg-gray-50 dark:bg-gray-800/50">

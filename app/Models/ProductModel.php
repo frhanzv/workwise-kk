@@ -24,6 +24,8 @@ class ProductModel extends Model
         'customer_name',
         'category',
         'description',
+        'suppliers',
+        'storage_location',
         'ph_level_target',
         'purity_grade',
         'density_20c',
@@ -37,7 +39,11 @@ class ProductModel extends Model
         'nsf_certified',
         'halal_certified',
         'epc_no',
+        'tag_mode',
+        'qty_per_tag',
         'unit',
+        'quantity_on_hand',
+        'qr_code',
         'last_seen_zone',
         'last_seen_at',
         'status',
@@ -94,5 +100,79 @@ class ProductModel extends Model
         return $this->select('products.*, zones.zone_name')
                     ->join('zones', 'zones.zone_id = products.last_seen_zone', 'left')
                     ->findAll();
+    }
+
+    public const STORAGE_ALL_ZONES = '*';
+
+    /**
+     * Allowed storage zone IDs. Includes "*" when all zones are allowed.
+     *
+     * @return list<string>
+     */
+    public static function decodeStorageLocations(?string $raw): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $ids = [];
+            foreach ($decoded as $zoneId) {
+                $zoneId = trim((string) $zoneId);
+                if ($zoneId !== '') {
+                    $ids[] = $zoneId;
+                }
+            }
+
+            return array_values(array_unique($ids));
+        }
+
+        // Legacy single zone_id.
+        return [trim($raw)];
+    }
+
+    public static function allowsAllZones(?string $raw): bool
+    {
+        return in_array(self::STORAGE_ALL_ZONES, self::decodeStorageLocations($raw), true);
+    }
+
+    /**
+     * Label for master list / detail views.
+     *
+     * @param array<string, string> $zoneNames zone_id => zone_name
+     */
+    public static function storageLocationsLabel(?string $raw, array $zoneNames = []): string
+    {
+        $allowed = self::decodeStorageLocations($raw);
+        if ($allowed === []) {
+            return '—';
+        }
+        if (in_array(self::STORAGE_ALL_ZONES, $allowed, true)) {
+            return 'All zones';
+        }
+
+        $names = [];
+        foreach ($allowed as $zoneId) {
+            $names[] = $zoneNames[$zoneId] ?? $zoneId;
+        }
+
+        return $names !== [] ? implode(', ', $names) : '—';
+    }
+
+    /**
+     * Only listed zones may be entered. "*" = all zones. Empty = deny all.
+     */
+    public static function isZoneAllowedForProduct(array $product, string $zoneId): bool
+    {
+        $allowed = self::decodeStorageLocations($product['storage_location'] ?? null);
+        if ($allowed === []) {
+            return false;
+        }
+        if (in_array(self::STORAGE_ALL_ZONES, $allowed, true)) {
+            return true;
+        }
+
+        return in_array((string) $zoneId, $allowed, true);
     }
 }

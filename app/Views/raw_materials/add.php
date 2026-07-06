@@ -7,7 +7,7 @@
         </a>
         <div>
             <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Add Raw Material</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Register a new raw material and assign a UHF RFID tag if needed.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Add a raw material to the master list and assign UHF RFID tags if needed.</p>
         </div>
     </div>
 

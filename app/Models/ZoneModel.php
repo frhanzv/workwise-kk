@@ -81,6 +81,10 @@ class ZoneModel extends Model
         
         foreach ($antennas as $antenna) {
             $function = strtoupper(trim($antenna['function'] ?? 'IN / OUT'));
+
+            if ($function === 'LOOKUP') {
+                return 'LOOKUP';
+            }
             
             // Check if function contains IN
             if (strpos($function, 'IN') !== false) {

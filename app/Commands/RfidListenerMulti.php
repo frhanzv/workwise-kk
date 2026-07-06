@@ -27,8 +27,10 @@ class RfidListenerMulti extends BaseCommand
     protected $readers = []; // [zone_id => ['socket' => resource, 'zone' => array, 'buffer' => string]]
     protected $isRunning = false;
     protected $zoneModel;
-    protected $lastZoneCheck = 0;
-    protected $zoneCheckInterval = 5; // Check for new zones/config changes every 5 seconds
+    protected $lastZoneCheck = 0.0;
+    protected $zoneCheckInterval = 1.0; // Check for new zones/config changes every 1 second
+    protected $connectTimeoutSec = 0;
+    protected $connectTimeoutUsec = 200000; // 200ms socket connect timeout
     protected $lastTagId = [];
     protected $tagCooldown = 2; // seconds to prevent duplicate reads
     
@@ -42,6 +44,7 @@ class RfidListenerMulti extends BaseCommand
         CLI::newLine();
         
         CLI::write('Config check interval: ' . $this->zoneCheckInterval . ' seconds', 'cyan');
+        CLI::write('Connect timeout: ' . ($this->connectTimeoutUsec / 1000) . 'ms per antenna', 'cyan');
         CLI::write('Scanning for zone readers...', 'yellow');
         CLI::write('Press Ctrl+C to stop the service', 'cyan');
         CLI::newLine();
@@ -57,11 +60,10 @@ class RfidListenerMulti extends BaseCommand
         // Main loop
         while ($this->isRunning) {
             try {
-                // Check for new zones periodically
-                $timeSinceCheck = time() - $this->lastZoneCheck;
-                if ($timeSinceCheck > $this->zoneCheckInterval) {
+                $now = microtime(true);
+                if ($now - $this->lastZoneCheck >= $this->zoneCheckInterval) {
+                    $this->lastZoneCheck = $now;
                     $this->updateReaderConnections();
-                    $this->lastZoneCheck = time();
                 }
                 
                 // Listen to all connected readers
@@ -90,7 +92,6 @@ class RfidListenerMulti extends BaseCommand
     {
         $startTime = microtime(true);
         $zoneAntennaModel = new \App\Models\ZoneAntennaModel();
-        
         // Get all active zones
         $zones = $this->zoneModel
             ->where('status', 'active')
@@ -162,8 +163,11 @@ class RfidListenerMulti extends BaseCommand
         }
         
         $elapsed = round((microtime(true) - $startTime) * 1000, 2);
-        $intervalUsed = time() - $this->lastZoneCheck;
-        CLI::write('[' . date('H:i:s') . '] Active antennas: ' . count($this->readers) . ' (checked ' . $intervalUsed . 's ago, took ' . $elapsed . 'ms)', 'dark_gray');
+        CLI::write(
+            '[' . date('H:i:s') . '] Active antennas: ' . count($this->readers)
+            . ' (took ' . $elapsed . 'ms)',
+            'dark_gray'
+        );
     }
     
     /**
@@ -172,64 +176,61 @@ class RfidListenerMulti extends BaseCommand
     protected function connectReader($zone, $antenna)
     {
         $antennaId = $antenna['id'] ?? 'legacy_' . $zone['zone_id'];
-        $zoneId = $zone['zone_id'];
         $ip = $antenna['ip_address'];
-        $port = $antenna['port'] ?: 49152;
-        
+        $port = (int) ($antenna['port'] ?: 49152);
+
+        if (empty($ip)) {
+            return;
+        }
+
         try {
-            // Quick check if IP is reachable before attempting socket connection
-            $pingTest = @fsockopen($ip, $port, $errno, $errstr, 0.3);
-            if (!$pingTest) {
-                // Skip connection attempt if not reachable (will retry in 5 seconds)
-                return;
-            }
-            fclose($pingTest);
-            
             $socket = @socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
-            
+
             if ($socket === false) {
                 throw new Exception('Failed to create socket: ' . socket_strerror(socket_last_error()));
             }
-            
-            // Set socket options
+
             socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
             socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
-            
-            $result = @socket_connect($socket, $ip, $port);
-            
-            if ($result === false) {
-                $error = socket_last_error($socket);
-                // EINPROGRESS is expected for non-blocking connects
-                if ($error !== SOCKET_EINPROGRESS && $error !== SOCKET_EWOULDBLOCK && $error !== 10035) {
-                    socket_close($socket);
-                    throw new Exception("Failed to connect: " . socket_strerror($error));
-                }
-                
-                // Wait for connection to complete
-                $write = [$socket];
-                $read = $except = null;
-                if (@socket_select($read, $write, $except, 2) === false) {
-                    socket_close($socket);
-                    throw new Exception("Connection timeout");
-                }
-            }
-            
-            // Set to non-blocking after connection
             socket_set_nonblock($socket);
-            
+
+            @socket_connect($socket, $ip, $port);
+
+            $write = [$socket];
+            $read = $except = null;
+            $selected = @socket_select(
+                $read,
+                $write,
+                $except,
+                $this->connectTimeoutSec,
+                $this->connectTimeoutUsec
+            );
+
+            if ($selected === false || $selected === 0) {
+                socket_close($socket);
+
+                return;
+            }
+
+            $soError = socket_get_option($socket, SOL_SOCKET, SO_ERROR);
+            if ($soError !== 0 && $soError !== false) {
+                socket_close($socket);
+
+                return;
+            }
+
             $antennaName = $antenna['antenna_name'] ?? 'Antenna 1';
             $antennaFunction = $antenna['function'] ?? 'IN / OUT';
-            
+
             $this->readers[$antennaId] = [
                 'socket' => $socket,
                 'zone' => $zone,
                 'antenna' => $antenna,
                 'buffer' => '',
-                'last_activity' => time()
+                'last_activity' => time(),
             ];
-            
+
             CLI::write("✓ Connected to {$zone['zone_name']} - {$antennaName} ({$ip}:{$port}) [Function: {$antennaFunction}]", 'green');
-            
         } catch (Exception $e) {
             $errAntennaName = $antenna['antenna_name'] ?? 'Antenna';
             CLI::error("✗ Failed to connect to {$zone['zone_name']} - {$errAntennaName} ({$ip}:{$port}): " . $e->getMessage());

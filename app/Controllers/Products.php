@@ -2,11 +2,26 @@
 
 namespace App\Controllers;
 
+use App\Controllers\Traits\HandlesStockMovement;
+use App\Controllers\Traits\HandlesInventoryTags;
 use App\Models\ProductModel;
 use App\Models\ZoneModel;
+use App\Services\InventoryStockService;
 
 class Products extends BaseController
 {
+    use HandlesStockMovement;
+    use HandlesInventoryTags;
+
+    protected function inventoryItemType(): string
+    {
+        return 'product';
+    }
+
+    protected function getInventoryItemModel()
+    {
+        return new ProductModel();
+    }
     public function index()
     {
         return redirect()->to(base_url('products/list'));
@@ -24,19 +39,38 @@ class Products extends BaseController
         $totalInactive = 0;
         $taggedCount   = 0;
 
-        foreach ($products as $p) {
+        foreach ($products as &$p) {
             if ($p['status'] === 'active') {
                 $totalActive++;
             } else {
                 $totalInactive++;
             }
-            if (!empty($p['epc_no'])) {
+            $tagCount = (new \App\Models\InventoryItemTagModel())->countTagsForItem('product', (int) $p['id']);
+            if ($tagCount > 0 || !empty($p['epc_no'])) {
                 $taggedCount++;
             }
+            $p['tag_count'] = $tagCount;
+            if ($tagCount > 0) {
+                (new InventoryStockService())->syncBalanceFromTags('product', (int) $p['id']);
+                $refreshed = $model->find($p['id']);
+                if ($refreshed) {
+                    $p['quantity_on_hand'] = $refreshed['quantity_on_hand'];
+                }
+            }
         }
+        unset($p);
+
+        $zoneNames = [];
+        foreach ($zones as $zone) {
+            $zoneNames[$zone['zone_id']] = $zone['zone_name'];
+        }
+        foreach ($products as &$p) {
+            $p['storage_zone_name'] = ProductModel::storageLocationsLabel($p['storage_location'] ?? null, $zoneNames);
+        }
+        unset($p);
 
         return view('products/list', [
-            'title'          => 'Products',
+            'title'          => 'Product Master List',
             'user'           => $this->getLoggedInUser(),
             'products'       => $products,
             'zones'          => $zones,
@@ -57,7 +91,7 @@ class Products extends BaseController
             'title'        => 'Add Product',
             'user'         => $this->getLoggedInUser(),
             'product_code' => $model->generateProductCode(),
-            'zones'        => [],
+            'zones'        => (new ZoneModel())->where('status', 'active')->orderBy('zone_name')->findAll(),
         ]);
     }
 
@@ -71,15 +105,29 @@ class Products extends BaseController
 
         $productCode = $this->request->getPost('product_code');
         if ($model->isCodeTaken($productCode)) {
-            return redirect()->back()->withInput()->with('error', 'Product code already exists.');
+            return redirect()->back()->withInput()->with('error', 'Product Code already exists.');
         }
 
         $epcNo = $this->request->getPost('epc_no') ?: null;
         if ($epcError = $this->validateEpc($epcNo)) {
             return redirect()->back()->withInput()->with('error', $epcError);
         }
+        if ($tagError = $this->validatePendingTags()) {
+            return redirect()->back()->withInput()->with('error', $tagError);
+        }
 
-        $model->insert($this->productPayloadFromRequest($productCode, $epcNo));
+        $payload = $this->productPayloadFromRequest($productCode, $epcNo);
+        $payload['status']      = 'active';
+        $payload['qty_per_tag'] = 0;
+
+        if (empty($payload['storage_location'])) {
+            return redirect()->back()->withInput()->with('error', 'Select at least one storage zone, or choose All zones.');
+        }
+
+        $newId = $model->insert($payload);
+        if ($newId) {
+            $this->afterInventoryItemSaved('product', (int) $newId, $epcNo);
+        }
 
         return redirect()->to(base_url('products/list'))->with('success', 'Product added successfully.');
     }
@@ -94,17 +142,46 @@ class Products extends BaseController
             return redirect()->to(base_url('products/list'))->with('error', 'Product not found.');
         }
 
+        $service = new InventoryStockService();
+        if ($service->itemHasActiveTags('product', (int) $id)) {
+            $service->syncBalanceFromTags('product', (int) $id);
+            $product = $model->find($id);
+        }
+
         $lastZone = null;
         if (!empty($product['last_seen_zone'])) {
             $lastZone = $zoneModel->where('zone_id', $product['last_seen_zone'])->first();
         }
 
-        return view('products/view', [
+        $zoneNames = [];
+        foreach ($zoneModel->where('status', 'active')->findAll() as $z) {
+            $zoneNames[$z['zone_id']] = $z['zone_name'];
+        }
+        $storageZonesLabel = ProductModel::storageLocationsLabel($product['storage_location'] ?? null, $zoneNames);
+
+        return view('products/view', array_merge([
             'title'    => 'Product Details',
             'user'     => $this->getLoggedInUser(),
             'product'  => $product,
             'lastZone' => $lastZone,
-        ]);
+            'storageZonesLabel' => $storageZonesLabel,
+            'itemType' => 'product',
+            'itemId'   => (int) $id,
+            'stockInUrl'  => base_url('products/stock-in/' . $id),
+            'stockOutUrl' => base_url('products/stock-out/' . $id),
+            'tags'     => (new InventoryStockService())->getTagsForItem('product', (int) $id),
+            'qr_code'  => (new InventoryStockService())->ensureQrCode('product', $product),
+        ], $this->loadStockViewData('product', (int) $id)));
+    }
+
+    public function stockIn($id)
+    {
+        return $this->processStockMovement('product', (int) $id, 'in', base_url('products/view/' . $id));
+    }
+
+    public function stockOut($id)
+    {
+        return $this->processStockMovement('product', (int) $id, 'out', base_url('products/view/' . $id));
     }
 
     public function edit($id)
@@ -116,11 +193,18 @@ class Products extends BaseController
             return redirect()->to(base_url('products/list'))->with('error', 'Product not found.');
         }
 
+        $service = new InventoryStockService();
+        if ($service->itemHasActiveTags('product', (int) $id)) {
+            $service->syncBalanceFromTags('product', (int) $id);
+            $product = $model->find($id);
+        }
+
         return view('products/edit', [
             'title'   => 'Edit Product',
             'user'    => $this->getLoggedInUser(),
             'product' => $product,
-            'zones'   => [],
+            'zones'   => (new ZoneModel())->where('status', 'active')->orderBy('zone_name')->findAll(),
+            'tags'    => (new InventoryStockService())->getTagsForItem('product', (int) $id),
         ]);
     }
 
@@ -139,7 +223,7 @@ class Products extends BaseController
 
         $productCode = $this->request->getPost('product_code');
         if ($model->isCodeTaken($productCode, (int)$id)) {
-            return redirect()->back()->withInput()->with('error', 'Product code already exists.');
+            return redirect()->back()->withInput()->with('error', 'Product Code already exists.');
         }
 
         $epcNo = $this->request->getPost('epc_no') ?: null;
@@ -147,7 +231,25 @@ class Products extends BaseController
             return redirect()->back()->withInput()->with('error', $epcError);
         }
 
-        $model->update($id, $this->productPayloadFromRequest($productCode, $epcNo));
+        $payload = $this->productPayloadFromRequest($productCode, $epcNo);
+        if (empty($payload['storage_location'])) {
+            return redirect()->back()->withInput()->with('error', 'Select at least one storage zone, or choose All zones.');
+        }
+
+        $model->update($id, $payload);
+
+        if ($epcNo) {
+            $this->afterInventoryItemSaved('product', (int) $id, $epcNo);
+        } else {
+            (new InventoryStockService())->ensureQrCode('product', $model->find($id));
+        }
+
+        $this->applyTagRegisteredQuantitiesFromRequest('product', (int) $id);
+
+        $service = new InventoryStockService();
+        if ($service->itemHasActiveTags('product', (int) $id)) {
+            $service->syncBalanceFromTags('product', (int) $id);
+        }
 
         return redirect()->to(base_url('products/view/' . $id))->with('success', 'Product updated successfully.');
     }
@@ -166,20 +268,21 @@ class Products extends BaseController
         return redirect()->to(base_url('products/list'))->with('success', 'Product deleted.');
     }
 
+    public function updateEpc()
+    {
+        return $this->assignTag();
+    }
+
     private function productRules(): array
     {
         return [
-            'product_name'         => 'required|min_length[2]|max_length[150]',
-            'product_code'         => 'required|max_length[50]',
-            'sap_code'             => 'required|max_length[50]',
-            'entry_date'           => 'required|valid_date[Y-m-d]',
-            'lot_number'           => 'required|max_length[50]',
-            'shelf_life_months'    => 'required|integer|greater_than_equal_to[0]',
-            'manufacturing_date'   => 'required|valid_date[Y-m-d]',
-            'expiry_date'          => 'required|valid_date[Y-m-d]',
-            'pricing_start_date'   => 'required|valid_date[Y-m-d]',
-            'cost_price'           => 'required|decimal|greater_than_equal_to[0]',
-            'selling_price'        => 'required|decimal|greater_than_equal_to[0]',
+            'product_name'      => 'required|min_length[2]|max_length[150]',
+            'product_code'      => 'required|max_length[50]',
+            'sap_code'          => 'required|max_length[50]',
+            'shelf_life_months' => 'required|integer|greater_than_equal_to[0]',
+            'expiry_date'       => 'required|valid_date[Y-m-d]',
+            'cost_price'        => 'required|decimal|greater_than_equal_to[0]',
+            'selling_price'     => 'required|decimal|greater_than_equal_to[0]',
         ];
     }
 
@@ -187,35 +290,64 @@ class Products extends BaseController
     {
         $post = $this->request;
 
-        return [
-            'product_code'       => $productCode,
-            'product_name'       => $post->getPost('product_name'),
-            'sap_code'           => $post->getPost('sap_code'),
-            'entry_date'         => $post->getPost('entry_date'),
-            'lot_number'         => $post->getPost('lot_number'),
-            'shelf_life_months'  => (int) $post->getPost('shelf_life_months'),
-            'analysis_date'      => $this->nullableDate($post->getPost('analysis_date')),
-            'manufacturing_date' => $post->getPost('manufacturing_date'),
-            'expiry_date'        => $post->getPost('expiry_date'),
-            'customer_name'      => $post->getPost('customer_name') ?: null,
-            'category'           => $post->getPost('category') ?: null,
-            'description'        => $post->getPost('description') ?: null,
-            'ph_level_target'    => $post->getPost('ph_level_target') ?: null,
-            'purity_grade'       => $post->getPost('purity_grade') ?: null,
-            'density_20c'        => $post->getPost('density_20c') ?: null,
-            'viscosity'          => $post->getPost('viscosity') ?: null,
-            'pricing_start_date' => $post->getPost('pricing_start_date'),
-            'cost_price'         => $post->getPost('cost_price'),
-            'selling_price'      => $post->getPost('selling_price'),
-            'color_description'  => $post->getPost('color_description') ?: null,
-            'qc_status'          => $post->getPost('qc_status') ?: null,
-            'qc_quantity'        => $post->getPost('qc_quantity') !== '' ? $post->getPost('qc_quantity') : null,
-            'nsf_certified'      => $post->getPost('nsf_certified') ? 1 : 0,
-            'halal_certified'    => $post->getPost('halal_certified') ? 1 : 0,
-            'epc_no'             => $epcNo,
-            'unit'               => $post->getPost('unit') ?: null,
-            'status'             => $post->getPost('status') ?? 'active',
-        ];
+        return array_merge([
+            'product_code'      => $productCode,
+            'product_name'      => $post->getPost('product_name'),
+            'sap_code'          => $post->getPost('sap_code'),
+            'description'       => $post->getPost('description') ?: null,
+            'shelf_life_months' => (int) $post->getPost('shelf_life_months'),
+            'expiry_date'       => $post->getPost('expiry_date'),
+            'suppliers'         => $this->suppliersFromRequest(),
+            'storage_location'  => $this->storageLocationsFromRequest(),
+            'cost_price'        => $post->getPost('cost_price'),
+            'selling_price'     => $post->getPost('selling_price'),
+            'epc_no'            => $epcNo,
+            'unit'              => $post->getPost('unit') ?: null,
+        ], $this->tagFieldsFromRequest());
+    }
+
+    private function suppliersFromRequest(): ?string
+    {
+        $posted = $this->request->getPost('suppliers');
+        if (!is_array($posted)) {
+            return null;
+        }
+
+        $names = [];
+        foreach ($posted as $name) {
+            $name = trim((string) $name);
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        $names = array_values(array_unique($names));
+
+        return $names === [] ? null : json_encode($names);
+    }
+
+    private function storageLocationsFromRequest(): ?string
+    {
+        if ($this->request->getPost('storage_all_zones')) {
+            return json_encode([ProductModel::STORAGE_ALL_ZONES]);
+        }
+
+        $posted = $this->request->getPost('storage_locations');
+        if (!is_array($posted)) {
+            return null;
+        }
+
+        $zoneIds = [];
+        foreach ($posted as $zoneId) {
+            $zoneId = trim((string) $zoneId);
+            if ($zoneId !== '' && $zoneId !== ProductModel::STORAGE_ALL_ZONES) {
+                $zoneIds[] = $zoneId;
+            }
+        }
+
+        $zoneIds = array_values(array_unique($zoneIds));
+
+        return $zoneIds === [] ? null : json_encode($zoneIds);
     }
 
     private function validateEpc(?string $epcNo, ?int $excludeId = null): ?string
@@ -224,21 +356,18 @@ class Products extends BaseController
             return null;
         }
 
-        $model = new ProductModel();
-        if ($model->isEpcRegistered($epcNo, $excludeId)) {
-            return 'EPC tag is already registered to another product.';
+        $service = new InventoryStockService();
+        if ($excludeId) {
+            $tag = (new \App\Models\InventoryItemTagModel())->getByEpc($epcNo);
+            if ($tag && $tag['item_type'] === 'product' && (int) $tag['item_id'] === $excludeId) {
+                return null;
+            }
         }
-
-        $rmModel = new \App\Models\RawMaterialModel();
-        if ($rmModel->isEpcRegistered($epcNo)) {
-            return 'EPC tag is already registered to a raw material.';
+        if ($service->isEpcUsedElsewhere($epcNo, 'product', $excludeId ?? 0)) {
+            return 'EPC tag is already registered to another item.';
         }
 
         return null;
     }
 
-    private function nullableDate(?string $value): ?string
-    {
-        return ($value && $value !== '') ? $value : null;
-    }
 }

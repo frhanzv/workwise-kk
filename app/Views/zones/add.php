@@ -139,6 +139,8 @@
                                             <option value="IN">IN</option>
                                             <option value="OUT">OUT</option>
                                             <option value="IN / OUT" selected>IN / OUT</option>
+                    <option value="LOOKUP">LOOKUP (Search Stock desk — no stock change)</option>
+                                            <option value="LOOKUP">LOOKUP (Search Stock desk — no stock change)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -210,6 +212,7 @@ function addAntenna() {
                     <option value="IN">IN</option>
                     <option value="OUT">OUT</option>
                     <option value="IN / OUT" selected>IN / OUT</option>
+                    <option value="LOOKUP">LOOKUP (Search Stock desk — no stock change)</option>
                 </select>
             </div>
         </div>

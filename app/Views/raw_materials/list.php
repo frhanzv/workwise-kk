@@ -14,8 +14,8 @@
 
     <div class="flex flex-wrap items-center justify-between gap-4 mt-6 md:mt-4">
         <div class="flex flex-col gap-1">
-            <h1 class="text-gray-900 dark:text-white text-3xl font-bold tracking-tight">Raw Materials</h1>
-            <p class="text-gray-500 dark:text-gray-400 text-base font-normal leading-normal">Track and manage raw materials with UHF RFID tags.</p>
+            <h1 class="text-gray-900 dark:text-white text-3xl font-bold tracking-tight">Raw Material Master List</h1>
+            <p class="text-gray-500 dark:text-gray-400 text-base font-normal leading-normal">Master data for raw materials and UHF RFID tags.</p>
         </div>
         <a href="<?= base_url('raw-materials/add') ?>" class="flex items-center justify-center h-10 px-4 gap-2 bg-primary text-white rounded-lg text-sm font-bold tracking-wide hover:bg-primary/90 transition-colors shadow-sm">
             <span class="material-symbols-outlined text-base">add</span>
@@ -68,7 +68,7 @@
         <div class="flex flex-wrap justify-between items-center gap-4 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <div class="relative w-full max-w-md">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xl">search</span>
-                <input id="searchInput" class="pl-10 w-full h-11 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-400" placeholder="Search by name, code, or category..." type="text"/>
+                <input id="searchInput" class="pl-10 w-full h-11 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-400" placeholder="Search by name, material code, or SAP code..." type="text"/>
             </div>
             <select id="statusFilter" class="h-10 px-3 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary focus:border-primary">
                 <option value="">All Status</option>
@@ -81,11 +81,11 @@
             <table class="w-full" id="materialsTable">
                 <thead>
                     <tr class="border-b border-gray-200 dark:border-gray-700">
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Code</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Material Code</th>
                         <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Material Name</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">Category</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">UHF Tag (EPC)</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">Last Seen</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">SAP Code</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">Tag Mode</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden xl:table-cell">Allowed Zones</th>
                         <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                         <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -103,7 +103,7 @@
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors material-row"
                                 data-name="<?= strtolower(esc($m['material_name'])) ?>"
                                 data-code="<?= strtolower(esc($m['material_code'])) ?>"
-                                data-category="<?= strtolower(esc($m['category'] ?? '')) ?>"
+                                data-sap="<?= strtolower(esc($m['sap_code'] ?? '')) ?>"
                                 data-status="<?= esc($m['status']) ?>">
                                 <td class="px-6 py-4 text-sm font-mono font-medium text-primary"><?= esc($m['material_code']) ?></td>
                                 <td class="px-6 py-4">
@@ -119,28 +119,18 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell"><?= esc($m['category'] ?? '—') ?></td>
-                                <td class="px-6 py-4 hidden lg:table-cell">
-                                    <?php if (!empty($m['epc_no'])): ?>
-                                        <span class="inline-flex items-center gap-1 text-xs font-mono bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 px-2 py-1 rounded">
-                                            <span class="material-symbols-outlined text-xs">rss_feed</span>
-                                            <?= esc($m['epc_no']) ?>
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="text-xs text-gray-400 dark:text-gray-500">No tag</span>
-                                    <?php endif; ?>
+                                <td class="px-6 py-4 text-sm font-mono text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                                    <?= !empty($m['sap_code']) ? esc($m['sap_code']) : '—' ?>
                                 </td>
                                 <td class="px-6 py-4 hidden lg:table-cell">
-                                    <?php if (!empty($m['zone_name'])): ?>
-                                        <div>
-                                            <p class="text-sm text-gray-700 dark:text-gray-300"><?= esc($m['zone_name']) ?></p>
-                                            <?php if (!empty($m['last_seen_at'])): ?>
-                                                <p class="text-xs text-gray-400 dark:text-gray-500"><?= date('d M Y H:i', strtotime($m['last_seen_at'])) ?></p>
-                                            <?php endif; ?>
-                                        </div>
+                                    <?php if (($m['tag_mode'] ?? 'single') === 'multi'): ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">Multi</span>
                                     <?php else: ?>
-                                        <span class="text-xs text-gray-400 dark:text-gray-500">Never scanned</span>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">Single</span>
                                     <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4 hidden xl:table-cell text-sm text-gray-700 dark:text-gray-300">
+                                    <?= esc($m['storage_zone_name'] ?? '—') ?>
                                 </td>
                                 <td class="px-6 py-4">
                                     <?php if ($m['status'] === 'active'): ?>
@@ -151,6 +141,12 @@
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex items-center justify-end gap-2">
+                                        <button type="button"
+                                                onclick="openEpcAssignModal(<?= (int) $m['id'] ?>, <?= json_encode($m['material_name']) ?>)"
+                                                class="p-1.5 rounded-lg text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                title="<?= !empty($m['epc_no']) ? 'Change UHF tag' : 'Assign UHF tag' ?>">
+                                            <span class="material-symbols-outlined text-base">rss_feed</span>
+                                        </button>
                                         <a href="<?= base_url('raw-materials/view/' . $m['id']) ?>" class="p-1.5 rounded-lg text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="View">
                                             <span class="material-symbols-outlined text-base">visibility</span>
                                         </a>
@@ -200,7 +196,7 @@ function filterRows() {
     const q      = searchInput.value.toLowerCase();
     const status = statusFilter.value;
     rows.forEach(row => {
-        const matchSearch = !q || row.dataset.name.includes(q) || row.dataset.code.includes(q) || row.dataset.category.includes(q);
+        const matchSearch = !q || row.dataset.name.includes(q) || row.dataset.code.includes(q) || (row.dataset.sap || '').includes(q);
         const matchStatus = !status || row.dataset.status === status;
         row.style.display = matchSearch && matchStatus ? '' : 'none';
     });
@@ -218,5 +214,13 @@ function closeDeleteModal() {
     document.getElementById('deleteModal').classList.add('hidden');
 }
 </script>
+
+<?= view('inventory/_epc_assign_modal', [
+    'postUrl'      => base_url('raw-materials/assign-tag'),
+    'tagsUrl'      => base_url('raw-materials/tags'),
+    'removeTagUrl' => base_url('raw-materials/remove-tag'),
+    'updateTagUrl' => base_url('raw-materials/update-tag'),
+    'itemLabel'    => 'raw material',
+]) ?>
 
 <?= $this->include('templates/footer') ?>
