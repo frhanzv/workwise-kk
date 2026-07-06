@@ -62,7 +62,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
     <div id="step-2" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-5">
         <div>
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">Tagging with Qty</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Scan the UHF tag. Quantity is set automatically — no typing.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Scan the UHF tag, then set <strong>registered qty</strong> for this tag (max capacity).</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -79,14 +79,15 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
                     <input type="text" id="epc_scan" class="<?= $inputClass ?> font-mono uppercase text-lg tracking-wide" placeholder="Scan tag…" autocomplete="off"/>
                 </div>
 
-                <div id="qty-preview" class="hidden p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20">
-                    <p class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Qty determined</p>
-                    <p class="mt-1">
-                        <strong id="qty-preview-value" class="text-3xl font-black text-indigo-700 dark:text-indigo-300 tabular-nums"></strong>
-                        <span id="qty-preview-unit" class="text-gray-500 dark:text-gray-400 ml-1"></span>
-                    </p>
-                    <p id="qty-preview-epc" class="text-xs font-mono text-purple-600 dark:text-purple-400 mt-2 break-all"></p>
-                    <p id="qty-preview-note" class="text-xs text-gray-500 dark:text-gray-400 mt-1"></p>
+                <div id="qty-preview" class="hidden p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 space-y-3">
+                    <p class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Tag scanned</p>
+                    <p id="qty-preview-epc" class="text-xs font-mono text-purple-600 dark:text-purple-400 break-all"></p>
+                    <p id="qty-preview-note" class="text-xs text-gray-500 dark:text-gray-400"></p>
+                    <div class="space-y-1.5">
+                        <label class="<?= $labelClass ?>" for="registered_qty">Registered qty for this tag</label>
+                        <input type="number" id="registered_qty" step="0.001" min="0.001" class="<?= $inputClass ?> text-lg font-bold tabular-nums"/>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Max capacity on this tag. You choose how much to stock in on the next step.</p>
+                    </div>
                 </div>
             </div>
 
@@ -110,8 +111,8 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
     <!-- STEP 3: Scan to confirm stock in -->
     <div id="step-3" class="hidden bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-5">
         <div>
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white">Scan to Stock In</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Scan the <strong>same tag</strong> again to confirm and stock in.</p>
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">Stock In</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Enter how many to stock in, then scan the <strong>same tag</strong> to confirm.</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -123,10 +124,17 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
                         <p id="confirm-item" class="font-semibold text-gray-900 dark:text-white"></p>
                     </div>
                     <div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Qty</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Registered on tag</p>
                         <p>
-                            <strong id="confirm-qty" class="text-2xl font-black text-green-600 dark:text-green-400 tabular-nums"></strong>
-                            <span id="confirm-unit" class="text-gray-500 text-sm ml-1"></span>
+                            <strong id="confirm-registered" class="text-xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums"></strong>
+                            <span id="confirm-unit-reg" class="text-gray-500 text-sm ml-1"></span>
+                        </p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Current on tag</p>
+                        <p>
+                            <strong id="confirm-current" class="text-lg font-semibold text-gray-700 dark:text-gray-300 tabular-nums"></strong>
+                            <span id="confirm-unit-cur" class="text-gray-500 text-sm ml-1"></span>
                         </p>
                     </div>
                     <div class="sm:col-span-2">
@@ -136,9 +144,23 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
                 </div>
             </div>
 
-            <div class="space-y-1.5">
-                <label class="<?= $labelClass ?>" for="epc_confirm">Scan same UHF EPC</label>
-                <input type="text" id="epc_confirm" class="<?= $inputClass ?> font-mono uppercase text-lg tracking-wide" placeholder="Scan same tag to confirm…" autocomplete="off"/>
+            <div class="space-y-4">
+                <div class="space-y-1.5">
+                    <label class="<?= $labelClass ?>" for="storage_zone_id">Storage location</label>
+                    <select id="storage_zone_id" class="<?= $inputClass ?>">
+                        <option value="">Select where item is stored…</option>
+                    </select>
+                    <p id="storage-zone-hint" class="text-[11px] text-gray-500 dark:text-gray-400">Only zones allowed for this item are listed.</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="<?= $labelClass ?>" for="stock_in_qty">Stock in quantity</label>
+                    <input type="number" id="stock_in_qty" step="0.001" min="0.001" class="<?= $inputClass ?> text-lg font-bold tabular-nums"/>
+                    <p id="stock-in-hint" class="text-[11px] text-gray-500 dark:text-gray-400"></p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="<?= $labelClass ?>" for="epc_confirm">Scan same UHF EPC to confirm</label>
+                    <input type="text" id="epc_confirm" class="<?= $inputClass ?> font-mono uppercase text-lg tracking-wide" placeholder="Scan same tag to confirm…" autocomplete="off"/>
+                </div>
             </div>
         </div>
 
@@ -171,6 +193,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
 <script>
 const items = <?= json_encode($items ?? [], JSON_UNESCAPED_UNICODE) ?>;
+const allZones = <?= json_encode($zones ?? [], JSON_UNESCAPED_UNICODE) ?>;
 const itemMap = Object.fromEntries(items.map(i => [i.type + ':' + i.id, i]));
 const csrfName = <?= json_encode(csrf_token()) ?>;
 const csrfHash = <?= json_encode(csrf_hash()) ?>;
@@ -395,19 +418,18 @@ async function stageTag() {
 
         pending = {
             epc_no: data.epc_no,
-            quantity: data.quantity,
             mode: data.mode,
             registered_qty: data.registered_qty,
             current_qty: data.current_qty,
+            max_stock_in: data.max_stock_in,
         };
 
         document.getElementById('qty-preview').classList.remove('hidden');
-        document.getElementById('qty-preview-value').textContent = formatQty(pending.quantity);
-        document.getElementById('qty-preview-unit').textContent = selectedItem.unit || '';
         document.getElementById('qty-preview-epc').textContent = pending.epc_no;
-        document.getElementById('qty-preview-note').textContent = pending.mode === 'restore'
-            ? 'Existing tag — restore to registered ' + formatQty(pending.registered_qty)
-            : 'New tag — qty from Qty per Tag on master';
+        document.getElementById('qty-preview-note').textContent = pending.mode === 'existing'
+            ? 'Existing tag — current ' + formatQty(pending.current_qty) + ' on hand'
+            : 'New tag — set registered qty for this tag';
+        document.getElementById('registered_qty').value = formatQty(pending.registered_qty);
         document.getElementById('btn-next-2').disabled = false;
     } catch (e) {
         showAlert('Network error while reading tag.', 'error');
@@ -416,16 +438,69 @@ async function stageTag() {
     }
 }
 
+function populateStorageZones() {
+    const select = document.getElementById('storage_zone_id');
+    const hint = document.getElementById('storage-zone-hint');
+    select.innerHTML = '<option value="">Select where item is stored…</option>';
+
+    if (!selectedItem) return;
+
+    let zones = allZones;
+    if (!selectedItem.allows_all_zones && (selectedItem.allowed_zone_ids || []).length) {
+        const allowed = new Set(selectedItem.allowed_zone_ids);
+        zones = allZones.filter(z => allowed.has(z.zone_id));
+    }
+
+    if (!zones.length) {
+        hint.textContent = 'No allowed zones configured for this item. Update Allowed Zones on the master list.';
+        return;
+    }
+
+    hint.textContent = selectedItem.allows_all_zones
+        ? 'All zones allowed for this item.'
+        : 'Only zones allowed for this item are listed.';
+
+    zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z.zone_id;
+        opt.textContent = z.zone_name;
+        select.appendChild(opt);
+    });
+}
+
 function goStep3() {
     if (!pending || !selectedItem) return;
     hideAlert();
+
+    const registered = parseFloat(document.getElementById('registered_qty').value);
+    if (!registered || registered <= 0) {
+        showAlert('Enter a registered qty greater than zero.', 'error');
+        return;
+    }
+
+    pending.registered_qty = registered;
+    const unit = selectedItem.unit || 'pcs';
+    const current = pending.current_qty || 0;
+    const maxIn = Math.max(0, registered - current);
+
     document.getElementById('confirm-item').textContent = selectedItem.name + ' (' + selectedItem.code + ')';
-    document.getElementById('confirm-qty').textContent = formatQty(pending.quantity);
-    document.getElementById('confirm-unit').textContent = selectedItem.unit || '';
+    document.getElementById('confirm-registered').textContent = formatQty(registered);
+    document.getElementById('confirm-unit-reg').textContent = unit;
+    document.getElementById('confirm-current').textContent = formatQty(current);
+    document.getElementById('confirm-unit-cur').textContent = unit;
     document.getElementById('confirm-epc').textContent = pending.epc_no;
+
+    const stockInput = document.getElementById('stock_in_qty');
+    stockInput.max = maxIn > 0 ? maxIn : registered;
+    stockInput.value = maxIn > 0 ? formatQty(maxIn) : formatQty(registered);
+    document.getElementById('stock-in-hint').textContent = maxIn > 0
+        ? 'Max ' + formatQty(maxIn) + ' ' + unit + ' (registered ' + formatQty(registered) + ' − current ' + formatQty(current) + ')'
+        : 'Tag already at registered qty — increase registered on previous step if needed.';
+
     document.getElementById('epc_confirm').value = '';
+    populateStorageZones();
     showStep(3);
-    document.getElementById('epc_confirm').focus();
+    document.getElementById('storage_zone_id').focus();
 }
 
 function goStep1() {
@@ -455,6 +530,31 @@ async function confirmStockIn() {
         return;
     }
 
+    const stockInQty = parseFloat(document.getElementById('stock_in_qty').value);
+    if (!stockInQty || stockInQty <= 0) {
+        showAlert('Enter stock in quantity greater than zero.', 'error');
+        document.getElementById('stock_in_qty').focus();
+        return;
+    }
+
+    const registered = pending.registered_qty;
+    const maxIn = Math.max(0, registered - (pending.current_qty || 0));
+    if (stockInQty > maxIn + 0.0001 && pending.mode === 'existing') {
+        showAlert('Stock in cannot exceed ' + formatQty(maxIn) + ' for this tag.', 'error');
+        return;
+    }
+    if (stockInQty > registered + 0.0001) {
+        showAlert('Stock in cannot exceed registered qty (' + formatQty(registered) + ').', 'error');
+        return;
+    }
+
+    const storageZoneId = document.getElementById('storage_zone_id').value.trim();
+    if (!storageZoneId) {
+        showAlert('Select a storage location.', 'error');
+        document.getElementById('storage_zone_id').focus();
+        return;
+    }
+
     busy = true;
     const btn = document.getElementById('btn-confirm');
     btn.disabled = true;
@@ -465,6 +565,9 @@ async function confirmStockIn() {
     body.set('id', String(selectedItem.id));
     body.set('batch_code', document.getElementById('batch_code').value.trim());
     body.set('epc_no', pending.epc_no);
+    body.set('registered_quantity', String(registered));
+    body.set('stock_in_quantity', String(stockInQty));
+    body.set('storage_zone_id', storageZoneId);
 
     try {
         const res = await fetch(submitUrl, {
@@ -486,6 +589,7 @@ async function confirmStockIn() {
             <p><span class="text-gray-500">Item:</span> <strong>${escapeHtml(data.item.name)}</strong> (${escapeHtml(data.item.code)})</p>
             <p><span class="text-gray-500">EPC:</span> <strong class="font-mono text-purple-600 dark:text-purple-400">${escapeHtml(data.tag.epc_no)}</strong></p>
             <p><span class="text-gray-500">Stocked in:</span> <strong class="text-green-600 dark:text-green-400">${formatQty(data.quantity)}</strong></p>
+            <p><span class="text-gray-500">Stored at:</span> <strong class="text-amber-600 dark:text-amber-400">${escapeHtml(data.storage_zone_name || '—')}</strong></p>
             <p><span class="text-gray-500">New balance:</span> <strong class="text-indigo-600 dark:text-indigo-400">${formatQty(data.balance_after)}</strong></p>
         `;
         pending = null;
@@ -524,6 +628,10 @@ function bindScanInput(id, onEnter) {
 }
 
 document.getElementById('item_search').addEventListener('input', renderItemList);
+document.getElementById('registered_qty')?.addEventListener('input', function () {
+    if (pending) document.getElementById('btn-next-2').disabled = !(parseFloat(this.value) > 0);
+});
+
 bindScanInput('epc_scan', stageTag);
 bindScanInput('epc_confirm', confirmStockIn);
 

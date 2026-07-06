@@ -720,20 +720,6 @@ class Inventory extends BaseController
 
         $rows = (new InventoryStockService())->getLocationMismatches($typeFilter);
 
-        // TEMP: dummy rows for UI preview — remove when real mismatch data exists
-        $rows = array_merge($rows, $this->getDummyLocationMismatchRows($typeFilter));
-
-        usort($rows, static function ($a, $b) {
-            $severity = ['High' => 0, 'Medium' => 1, 'Low' => 2];
-            $pa = $severity[$a['alert_status']] ?? 9;
-            $pb = $severity[$b['alert_status']] ?? 9;
-            if ($pa !== $pb) {
-                return $pa <=> $pb;
-            }
-
-            return ($b['detected_at_ts'] ?? 0) <=> ($a['detected_at_ts'] ?? 0);
-        });
-
         $alertCounts = ['High' => 0, 'Medium' => 0, 'Low' => 0];
         foreach ($rows as $row) {
             $status = $row['alert_status'] ?? '';
@@ -782,10 +768,19 @@ class Inventory extends BaseController
 
         usort($items, static fn ($a, $b) => strcmp($a['name'], $b['name']));
 
+        $zones = (new ZoneModel())
+            ->where('status', 'active')
+            ->orderBy('zone_name', 'ASC')
+            ->findAll();
+
         return view('inventory/tag_stock_in', [
             'title' => 'Tag + Stock In',
             'user'  => $this->getLoggedInUser(),
             'items' => $items,
+            'zones' => array_map(static fn ($z) => [
+                'zone_id'   => $z['zone_id'],
+                'zone_name' => $z['zone_name'],
+            ], $zones),
         ]);
     }
 
@@ -833,9 +828,9 @@ class Inventory extends BaseController
                 'success'        => true,
                 'mode'           => $plan['mode'],
                 'epc_no'         => $plan['epc_no'],
-                'quantity'       => $plan['quantity'],
                 'registered_qty' => $plan['registered_qty'],
                 'current_qty'    => $plan['current_qty'],
+                'max_stock_in'   => $plan['max_stock_in'],
             ]);
         } catch (\RuntimeException $e) {
             return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
@@ -846,8 +841,11 @@ class Inventory extends BaseController
     {
         $type      = (string) ($this->request->getPost('type') ?? '');
         $id        = (int) ($this->request->getPost('id') ?? 0);
-        $batchCode = trim((string) ($this->request->getPost('batch_code') ?? ''));
-        $epcNo     = trim((string) ($this->request->getPost('epc_no') ?? ''));
+        $batchCode        = trim((string) ($this->request->getPost('batch_code') ?? ''));
+        $epcNo            = trim((string) ($this->request->getPost('epc_no') ?? ''));
+        $registeredQty    = (float) ($this->request->getPost('registered_quantity') ?? 0);
+        $stockInQty       = (float) ($this->request->getPost('stock_in_quantity') ?? 0);
+        $storageZoneId    = trim((string) ($this->request->getPost('storage_zone_id') ?? ''));
 
         if (!in_array($type, ['product', 'raw_material'], true) || $id <= 0) {
             return $this->response->setJSON(['success' => false, 'message' => 'Select a product or raw material.']);
@@ -855,22 +853,32 @@ class Inventory extends BaseController
         if ($epcNo === '' || strlen($epcNo) < 4) {
             return $this->response->setJSON(['success' => false, 'message' => 'Scan or enter a valid UHF EPC tag.']);
         }
+        if ($storageZoneId === '') {
+            return $this->response->setJSON(['success' => false, 'message' => 'Select a storage location.']);
+        }
 
         try {
             $result = (new InventoryStockService())->tagAndStockIn(
                 $type,
                 $id,
                 $epcNo,
+                $registeredQty,
+                $stockInQty,
                 $batchCode !== '' ? $batchCode : null,
-                (int) session()->get('id') ?: null
+                (int) session()->get('id') ?: null,
+                $storageZoneId
             );
 
             $item = $result['item'];
             $tag  = $result['tag'];
             $qty  = (float) $result['quantity'];
-            $message = ($result['mode'] ?? '') === 'restore'
-                ? 'Confirmed — stocked in ' . format_inventory_qty($qty) . ' (restored to registered qty).'
-                : 'Confirmed — tag assigned and stocked in ' . format_inventory_qty($qty) . '.';
+            $loc  = $result['storage_zone_name'] ?? '';
+            $message = ($result['mode'] ?? '') === 'existing'
+                ? 'Confirmed — stocked in ' . format_inventory_qty($qty) . ' on existing tag.'
+                : 'Confirmed — tag assigned (registered ' . format_inventory_qty($result['registered_qty'] ?? 0) . ') and stocked in ' . format_inventory_qty($qty) . '.';
+            if ($loc !== '') {
+                $message .= ' Stored at ' . $loc . '.';
+            }
 
             $service = new InventoryStockService();
 
@@ -881,7 +889,8 @@ class Inventory extends BaseController
                 'balance_after' => $result['balance_after'],
                 'mode'          => $result['mode'] ?? 'new',
                 'item'          => $this->formatTagStockInItem($type, $item, $service->getTagsForItem($type, $id)),
-                'tag'           => $tag,
+                'tag'               => $tag,
+                'storage_zone_name' => $result['storage_zone_name'] ?? null,
             ]);
         } catch (\RuntimeException $e) {
             return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
@@ -891,18 +900,28 @@ class Inventory extends BaseController
     private function formatTagStockInItem(string $type, array $row, array $tags = []): array
     {
         $isProduct = $type === 'product';
+        $storageRaw = $row['storage_location'] ?? null;
+        if (($storageRaw === null || $storageRaw === '') && $type === 'raw_material' && !empty($row['warehouse_location'])) {
+            $storageRaw = json_encode([(string) $row['warehouse_location']]);
+        }
+        $allowedIds = ProductModel::decodeStorageLocations($storageRaw);
+        if (in_array(ProductModel::STORAGE_ALL_ZONES, $allowedIds, true)) {
+            $allowedIds = [];
+        }
 
         return [
-            'type'             => $type,
-            'id'               => (int) $row['id'],
-            'code'             => $isProduct ? ($row['product_code'] ?? '') : ($row['material_code'] ?? ''),
-            'name'             => $isProduct ? ($row['product_name'] ?? '') : ($row['material_name'] ?? ''),
-            'sap_code'         => $row['sap_code'] ?? '',
-            'unit'             => $row['unit'] ?? '',
-            'tag_mode'         => $row['tag_mode'] ?? 'single',
-            'qty_per_tag'      => (float) ($row['qty_per_tag'] ?? 0),
-            'quantity_on_hand' => (float) ($row['quantity_on_hand'] ?? 0),
-            'tags'             => $tags,
+            'type'               => $type,
+            'id'                 => (int) $row['id'],
+            'code'               => $isProduct ? ($row['product_code'] ?? '') : ($row['material_code'] ?? ''),
+            'name'               => $isProduct ? ($row['product_name'] ?? '') : ($row['material_name'] ?? ''),
+            'sap_code'           => $row['sap_code'] ?? '',
+            'unit'               => $row['unit'] ?? '',
+            'tag_mode'           => $row['tag_mode'] ?? 'single',
+            'qty_per_tag'        => (float) ($row['qty_per_tag'] ?? 0),
+            'quantity_on_hand'   => (float) ($row['quantity_on_hand'] ?? 0),
+            'tags'               => $tags,
+            'allows_all_zones'   => ProductModel::allowsAllZones($storageRaw),
+            'allowed_zone_ids'   => $allowedIds,
         ];
     }
 
@@ -1252,111 +1271,5 @@ class Inventory extends BaseController
         }
 
         return $secs . 's';
-    }
-
-    /**
-     * TEMP: Dummy mismatch rows for page preview. Delete this method and its call in locationMismatch().
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function getDummyLocationMismatchRows(?string $typeFilter = null): array
-    {
-        $now = time();
-        $rows = [
-            [
-                'item_type'         => 'product',
-                'item_id'           => 9001,
-                'tag_id'            => null,
-                'type_label'        => 'Product',
-                'code'              => 'PRD-2026-001',
-                'name'              => 'Industrial Solvent A',
-                'unit'              => 'Litre',
-                'batch_number'      => 'BATCH-2401',
-                'qty'               => 48.0,
-                'store_location'    => 'Warehouse A, Cold Storage',
-                'mismatch_location' => 'Production Floor',
-                'detected_at'       => date('d-M-y H:i', $now - (30 * 3600)),
-                'detected_at_ts'    => $now - (30 * 3600),
-                'alert_status'      => 'High',
-                'age_hours'         => 30,
-            ],
-            [
-                'item_type'         => 'product',
-                'item_id'           => 9002,
-                'tag_id'            => 9002,
-                'type_label'        => 'Product',
-                'code'              => 'PRD-2026-014',
-                'name'              => 'Finished Goods Pack B',
-                'unit'              => 'Carton',
-                'batch_number'      => 'FG-8842',
-                'qty'               => 120.0,
-                'store_location'    => 'Finished Goods Store',
-                'mismatch_location' => 'Loading Bay',
-                'detected_at'       => date('d-M-y H:i', $now - (10 * 3600)),
-                'detected_at_ts'    => $now - (10 * 3600),
-                'alert_status'      => 'Medium',
-                'age_hours'         => 10,
-            ],
-            [
-                'item_type'         => 'raw_material',
-                'item_id'           => 9003,
-                'tag_id'            => null,
-                'type_label'        => 'Raw Material',
-                'code'              => 'RM-CHEM-088',
-                'name'              => 'Sodium Hydroxide Pellets',
-                'unit'              => 'Kg',
-                'batch_number'      => 'LOT-7721',
-                'qty'               => 250.0,
-                'store_location'    => 'Chemical Store',
-                'mismatch_location' => 'Receiving Dock',
-                'detected_at'       => date('d-M-y H:i', $now - (6 * 3600)),
-                'detected_at_ts'    => $now - (6 * 3600),
-                'alert_status'      => 'Medium',
-                'age_hours'         => 6,
-            ],
-            [
-                'item_type'         => 'raw_material',
-                'item_id'           => 9004,
-                'tag_id'            => 9004,
-                'type_label'        => 'Raw Material',
-                'code'              => 'RM-PACK-003',
-                'name'              => 'HDPE Container 20L',
-                'unit'              => 'Pcs',
-                'batch_number'      => 'A1B2C3D4',
-                'qty'               => 36.0,
-                'store_location'    => 'Packaging Store',
-                'mismatch_location' => 'Assembly Line 2',
-                'detected_at'       => date('d-M-y H:i', $now - (2 * 3600)),
-                'detected_at_ts'    => $now - (2 * 3600),
-                'alert_status'      => 'Low',
-                'age_hours'         => 2,
-            ],
-            [
-                'item_type'         => 'product',
-                'item_id'           => 9005,
-                'tag_id'            => 9005,
-                'type_label'        => 'Product',
-                'code'              => 'PRD-2026-022',
-                'name'              => 'Cleaning Agent Concentrate',
-                'unit'              => 'Litre',
-                'batch_number'      => 'CA-9910',
-                'qty'               => 15.5,
-                'store_location'    => 'Warehouse B',
-                'mismatch_location' => 'Maintenance Room',
-                'detected_at'       => date('d-M-y H:i', $now - (45 * 60)),
-                'detected_at_ts'    => $now - (45 * 60),
-                'alert_status'      => 'Low',
-                'age_hours'         => 0.75,
-            ],
-        ];
-
-        if ($typeFilter !== null) {
-            $rows = array_values(array_filter(
-                $rows,
-                static fn ($row) => ($row['item_type'] ?? '') === $typeFilter
-            ));
-        }
-
-        return $rows;
     }
 }

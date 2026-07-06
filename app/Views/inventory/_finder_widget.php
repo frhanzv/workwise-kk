@@ -130,6 +130,44 @@
             '<p class="text-sm font-bold">' + esc(loc.zone_name) + '</p>' + since + '</div>';
     }
 
+    function tagLocationBlock(loc) {
+        if (!loc || loc.status === 'unknown') {
+            return '<p class="text-[10px] text-gray-500 mt-0.5">Location unknown</p>';
+        }
+        const tone = loc.status === 'in_zone'
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-amber-600 dark:text-amber-400';
+        const label = loc.status === 'in_zone' ? 'In zone' : 'Last seen';
+        const since = loc.since
+            ? '<span class="text-gray-500 dark:text-gray-400"> · ' + esc(loc.since) + '</span>'
+            : '';
+        return '<p class="text-[10px] mt-0.5"><span class="font-bold uppercase ' + tone + '">' + label + '</span>' +
+            ' <span class="' + tone + ' font-medium">' + esc(loc.zone_name) + '</span>' + since + '</p>';
+    }
+
+    function renderTagRows(tags, highlightEpc, locationsDiffer) {
+        if (!tags || !tags.length) return '';
+        const header = locationsDiffer
+            ? 'Each tag — different location'
+            : 'Per tag (' + tags.length + ')';
+        return '<div class="mt-2 space-y-1.5 border-t border-gray-200 dark:border-gray-700 pt-2">' +
+            '<p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">' + header + '</p>' +
+            tags.map(t => {
+                const hi = t.highlighted || (highlightEpc && t.epc_no && t.epc_no.toUpperCase() === highlightEpc.toUpperCase());
+                return '<div class="flex items-start justify-between gap-2 p-2 rounded-lg text-xs ' +
+                    (hi ? 'bg-primary/10 border border-primary/30' : 'bg-gray-50 dark:bg-gray-800/60') + '">' +
+                    '<div class="min-w-0 flex-1">' +
+                    (hi ? '<span class="text-[9px] font-bold text-primary uppercase">Scanned tag</span>' : '') +
+                    '<p class="font-mono text-[10px] break-all text-purple-600 dark:text-purple-400">' + esc(t.epc_no) + '</p>' +
+                    tagLocationBlock(t.location) +
+                    '</div>' +
+                    '<div class="text-right shrink-0">' +
+                    '<p class="font-bold text-gray-900 dark:text-white tabular-nums">' + fmtQty(t.quantity) + '</p>' +
+                    '<p class="text-[9px] text-gray-500">reg ' + fmtQty(t.registered_quantity) + '</p>' +
+                    '</div></div>';
+            }).join('') + '</div>';
+    }
+
     function renderResults(results, query) {
         const el = document.getElementById('stock-finder-results');
         const hint = document.getElementById('stock-finder-hint');
@@ -140,22 +178,36 @@
             return;
         }
 
-        hint.textContent = results.length + ' result' + (results.length === 1 ? '' : 's') + ' for “' + query + '”';
+        const tagTotal = results.reduce((n, r) => n + (r.tag_count || 0), 0);
+        let hintText = results.length + ' product' + (results.length === 1 ? '' : 's');
+        if (tagTotal > 0) {
+            hintText += ' · ' + tagTotal + ' UHF tag' + (tagTotal === 1 ? '' : 's') + ' total';
+        }
+        hint.textContent = hintText + ' for “' + query + '”';
+
         el.innerHTML = results.map(r => {
-            const epc = r.epc_no ? '<p class="text-[10px] font-mono text-purple-600 dark:text-purple-400 mt-1 break-all">' + esc(r.epc_no) + '</p>' : '';
+            const tagBadge = (r.tag_count || 0) > 0
+                ? '<span class="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">' +
+                  (r.tag_count) + ' UHF tag' + (r.tag_count === 1 ? '' : 's') + '</span>'
+                : '';
+            const totalLabel = (r.tag_count || 0) > 1
+                ? '<p class="text-[9px] text-gray-500 uppercase tracking-wider">Total stock</p>'
+                : '';
             return '<div class="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40">' +
                 '<div class="flex items-start justify-between gap-2">' +
                 '<div class="min-w-0">' +
                 '<span class="text-[10px] font-bold uppercase tracking-wider text-primary">' + esc(r.type_label) + '</span>' +
                 '<p class="font-semibold text-sm text-gray-900 dark:text-white truncate">' + esc(r.name) + '</p>' +
                 '<p class="text-xs font-mono text-gray-500 dark:text-gray-400">' + esc(r.code) + '</p>' +
-                epc +
+                tagBadge +
                 '</div>' +
                 '<div class="text-right shrink-0">' +
-                '<p class="text-lg font-bold text-primary tabular-nums">' + fmtQty(r.balance) + '</p>' +
-                '<p class="text-[10px] text-gray-500">' + esc(r.unit || 'qty') + '</p>' +
+                totalLabel +
+                '<p class="text-lg font-bold text-primary tabular-nums">' + fmtQty(r.total_balance ?? r.balance) + '</p>' +
+                '<p class="text-[10px] text-gray-500">' + esc(r.unit || 'pcs') + '</p>' +
                 '</div></div>' +
                 locationBadge(r.location) +
+                renderTagRows(r.tags, r.epc_no, r.locations_differ) +
                 '<p class="text-[10px] text-gray-500 dark:text-gray-400 mt-2">Allowed: ' + esc(r.allowed_zones) + '</p>' +
                 '</div>';
         }).join('');

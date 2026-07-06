@@ -66,7 +66,8 @@ class InventoryStockService
             if (!$match || count($results) >= $limit) {
                 return;
             }
-            $key = ($match['type'] ?? '') . ':' . ($match['id'] ?? '') . ':' . ($match['epc_no'] ?? '');
+            // One card per product/material (not per tag).
+            $key = ($match['type'] ?? '') . ':' . ($match['id'] ?? '');
             if (isset($seen[$key])) {
                 return;
             }
@@ -130,9 +131,10 @@ class InventoryStockService
 
     public function formatFinderResult(array $match): array
     {
-        $type  = $match['type'];
-        $id    = (int) $match['id'];
-        $tagId = !empty($match['tag_id']) ? (int) $match['tag_id'] : null;
+        $type          = $match['type'];
+        $id            = (int) $match['id'];
+        $tagId         = !empty($match['tag_id']) ? (int) $match['tag_id'] : null;
+        $highlightEpc  = strtoupper(trim((string) ($match['epc_no'] ?? '')));
 
         if ($this->itemHasActiveTags($type, $id)) {
             $this->syncBalanceFromTags($type, $id);
@@ -143,8 +145,7 @@ class InventoryStockService
             }
         }
 
-        $location = $this->resolveItemLocation($type, $id, $tagId);
-        $item     = $this->getItem($type, $id);
+        $item = $this->getItem($type, $id);
 
         $zoneNamesMap = [];
         foreach ((new ZoneModel())->where('status', 'active')->findAll() as $z) {
@@ -156,6 +157,34 @@ class InventoryStockService
             $storageRaw = json_encode([(string) $item['warehouse_location']]);
         }
 
+        $tagRows   = (new InventoryItemTagModel())->getTagsForItem($type, $id);
+        $tags      = [];
+        $tagTotal  = 0.0;
+
+        foreach ($tagRows as $tag) {
+            $tid = (int) $tag['id'];
+            $qty = normalize_inventory_qty((float) ($tag['quantity'] ?? 0));
+            $tagTotal += $qty;
+            $tags[] = [
+                'tag_id'              => $tid,
+                'epc_no'              => $tag['epc_no'] ?? '',
+                'quantity'            => $qty,
+                'registered_quantity' => normalize_inventory_qty((float) ($tag['default_quantity'] ?? $tag['quantity'] ?? 0)),
+                'location'            => $this->resolveItemLocation($type, $id, $tid),
+                'highlighted'         => $highlightEpc !== '' && strcasecmp($tag['epc_no'] ?? '', $highlightEpc) === 0,
+            ];
+        }
+
+        $tagCount = count($tags);
+        $balance  = $tagCount > 0 ? (float) ($match['balance'] ?? $tagTotal) : (float) ($match['balance'] ?? 0);
+
+        $location         = $this->resolveFinderLocationSummary($tags, $type, $id, $tagId);
+        $locationZoneNames = array_values(array_unique(array_filter(array_map(
+            static fn ($t) => $t['location']['zone_name'] ?? '',
+            $tags
+        ))));
+        $locationsDiffer = count($locationZoneNames) > 1;
+
         return [
             'type'             => $type,
             'type_label'       => $match['type_label'] ?? ($type === 'product' ? 'Product' : 'Raw Material'),
@@ -163,13 +192,85 @@ class InventoryStockService
             'code'             => $match['code'] ?? '',
             'name'             => $match['name'] ?? '',
             'unit'             => $match['unit'] ?? '',
-            'epc_no'           => $match['epc_no'] ?? '',
+            'epc_no'           => $highlightEpc,
             'tag_id'           => $tagId,
             'tag_quantity'     => isset($match['tag_quantity']) ? (float) $match['tag_quantity'] : null,
-            'balance'          => (float) ($match['balance'] ?? $match['quantity_on_hand'] ?? 0),
+            'tag_count'        => $tagCount,
+            'tags'             => $tags,
+            'balance'          => $balance,
+            'total_balance'    => $balance,
             'location'         => $location,
+            'locations_differ' => $locationsDiffer,
             'allowed_zones'    => ProductModel::storageLocationsLabel($storageRaw, $zoneNamesMap),
-            'detail_url'       => base_url('inventory/search-stock') . '?q=' . rawurlencode($match['epc_no'] ?: $match['code']),
+            'detail_url'       => base_url('inventory/search-stock') . '?q=' . rawurlencode($highlightEpc ?: ($match['code'] ?? '')),
+        ];
+    }
+
+    /**
+     * One-line location for finder card; per-tag rows carry full detail when multiple tags.
+     */
+    private function resolveFinderLocationSummary(array $tags, string $itemType, int $itemId, ?int $tagId): array
+    {
+        if ($tags === []) {
+            return $this->resolveItemLocation($itemType, $itemId, $tagId);
+        }
+
+        if (count($tags) === 1) {
+            return $tags[0]['location'];
+        }
+
+        $inZone = array_values(array_filter($tags, static fn ($t) => ($t['location']['status'] ?? '') === 'in_zone'));
+        if ($inZone !== []) {
+            $zones = array_values(array_unique(array_column(array_column($inZone, 'location'), 'zone_name')));
+            if (count($zones) > 1) {
+                return [
+                    'status'    => 'in_zone',
+                    'label'     => 'Multiple locations',
+                    'zone_name' => count($tags) . ' tags in ' . count($zones) . ' different zones',
+                    'since'     => null,
+                    'multi_tag' => true,
+                    'zones'     => $zones,
+                ];
+            }
+
+            return [
+                'status'    => 'in_zone',
+                'label'     => count($inZone) . ' of ' . count($tags) . ' tags in zone',
+                'zone_name' => $zones[0],
+                'since'     => null,
+                'multi_tag' => true,
+            ];
+        }
+
+        $lastSeen = array_values(array_filter($tags, static fn ($t) => ($t['location']['status'] ?? '') === 'last_seen'));
+        if ($lastSeen !== []) {
+            $zones = array_values(array_unique(array_column(array_column($lastSeen, 'location'), 'zone_name')));
+            if (count($zones) > 1) {
+                return [
+                    'status'    => 'last_seen',
+                    'label'     => 'Multiple locations',
+                    'zone_name' => count($tags) . ' tags — each at a different last zone',
+                    'since'     => null,
+                    'multi_tag' => true,
+                    'zones'     => $zones,
+                ];
+            }
+
+            return [
+                'status'    => 'last_seen',
+                'label'     => count($tags) . ' tags — last seen',
+                'zone_name' => $zones[0],
+                'since'     => null,
+                'multi_tag' => true,
+            ];
+        }
+
+        return [
+            'status'    => 'unknown',
+            'label'     => count($tags) . ' tags',
+            'zone_name' => 'Location unknown',
+            'since'     => null,
+            'multi_tag' => true,
         ];
     }
 
@@ -450,7 +551,7 @@ class InventoryStockService
     }
 
     /**
-     * Preview Tag + Stock In: resolve EPC and auto-determined quantity (no write).
+     * Preview Tag + Stock In: resolve EPC and suggest registered qty (no stock movement).
      */
     public function previewTagStockIn(string $itemType, int $itemId, string $epcNo): array
     {
@@ -464,23 +565,34 @@ class InventoryStockService
             throw new \RuntimeException('Scan a valid UHF EPC tag.');
         }
 
-        return $this->resolveTagStockInQuantity($itemType, $item, $epcNo);
+        return $this->resolveTagStockInPlan($itemType, $item, $epcNo);
     }
 
     /**
-     * Assign a UHF tag and stock in quantity (Tag + Stock In wizard).
-     * Quantity is determined from qty_per_tag or existing tag registered qty — not typed in.
-     * Optionally updates batch/item code.
+     * Assign or update tag registered qty, then stock in a user-specified quantity.
      */
     public function tagAndStockIn(
         string $itemType,
         int $itemId,
         string $epcNo,
+        float $registeredQty,
+        float $stockInQty,
         ?string $batchCode = null,
-        ?int $userId = null
+        ?int $userId = null,
+        ?string $storageZoneId = null
     ): array {
         if (!in_array($itemType, ['product', 'raw_material'], true)) {
             throw new \RuntimeException('Invalid item type.');
+        }
+
+        $registeredQty = normalize_inventory_qty(max(0, $registeredQty));
+        $stockInQty    = normalize_inventory_qty(max(0, $stockInQty));
+
+        if ($registeredQty <= 0) {
+            throw new \RuntimeException('Registered quantity for this tag must be greater than zero.');
+        }
+        if ($stockInQty <= 0) {
+            throw new \RuntimeException('Stock in quantity must be greater than zero.');
         }
 
         $model = $itemType === 'product' ? new ProductModel() : new RawMaterialModel();
@@ -500,69 +612,143 @@ class InventoryStockService
         }
 
         $epcNo    = strtoupper(trim($epcNo));
-        $plan     = $this->resolveTagStockInQuantity($itemType, $item, $epcNo);
-        $quantity = $plan['quantity'];
-
+        $plan     = $this->resolveTagStockInPlan($itemType, $item, $epcNo);
         $tagModel = new InventoryItemTagModel();
 
-        if ($plan['mode'] === 'restore') {
-            $tagId = (int) $plan['tag_id'];
-            $tagModel->update($tagId, ['quantity' => $plan['registered_qty']]);
+        if ($plan['mode'] === 'existing') {
+            $tagId   = (int) $plan['tag_id'];
+            $current = normalize_inventory_qty((float) ($plan['current_qty'] ?? 0));
+
+            if ($current + $stockInQty > $registeredQty + 0.0000001) {
+                throw new \RuntimeException(
+                    'Stock in ' . format_inventory_qty($stockInQty)
+                    . ' exceeds tag capacity. Current ' . format_inventory_qty($current)
+                    . ', registered ' . format_inventory_qty($registeredQty) . '.'
+                );
+            }
+
+            $tagModel->update($tagId, [
+                'default_quantity' => $registeredQty,
+                'quantity'         => normalize_inventory_qty($current + $stockInQty),
+            ]);
             $balanceAfter = $this->syncBalanceFromTags($itemType, $itemId);
             $this->logItemMovement(
                 $itemType,
                 $itemId,
                 'stock_in',
-                $quantity,
+                $stockInQty,
                 'uhf',
                 $epcNo,
                 null,
                 $userId,
-                'Tag + Stock In (restore): ' . $epcNo
+                'Tag + Stock In: ' . $epcNo
             );
             $tag = $this->formatTagPayload($tagModel->find($tagId));
         } else {
-            $tag = $this->assignTag($itemType, $itemId, $epcNo, $quantity);
-            $balanceAfter = (float) ($model->find($itemId)['quantity_on_hand'] ?? 0);
-
-            if ($quantity > 0) {
-                $tagModel->update((int) $tag['tag_id'], ['quantity' => $quantity]);
-                $balanceAfter = $this->syncBalanceFromTags($itemType, $itemId);
-                $this->logItemMovement(
-                    $itemType,
-                    $itemId,
-                    'stock_in',
-                    $quantity,
-                    'uhf',
-                    $epcNo,
-                    null,
-                    $userId,
-                    'Tag + Stock In: ' . $epcNo
+            if ($stockInQty > $registeredQty + 0.0000001) {
+                throw new \RuntimeException(
+                    'Stock in quantity cannot exceed registered quantity (' . format_inventory_qty($registeredQty) . ').'
                 );
-                $tag = $this->formatTagPayload($tagModel->find((int) $tag['tag_id']));
             }
+
+            $tag = $this->assignTag($itemType, $itemId, $epcNo, $registeredQty);
+            $tagModel->update((int) $tag['tag_id'], ['quantity' => $stockInQty]);
+            $balanceAfter = $this->syncBalanceFromTags($itemType, $itemId);
+            $this->logItemMovement(
+                $itemType,
+                $itemId,
+                'stock_in',
+                $stockInQty,
+                'uhf',
+                $epcNo,
+                null,
+                $userId,
+                'Tag + Stock In: ' . $epcNo
+            );
+            $tag = $this->formatTagPayload($tagModel->find((int) $tag['tag_id']));
+        }
+
+        $tagId = (int) ($tag['tag_id'] ?? 0);
+        $storageZoneName = null;
+        if ($storageZoneId !== null && trim($storageZoneId) !== '' && $tagId > 0) {
+            $storageZoneName = $this->recordManualStorageLocation($itemType, $itemId, $tagId, trim($storageZoneId));
         }
 
         return [
-            'item'          => $model->find($itemId),
-            'item_type'     => $itemType,
-            'tag'           => $tag,
-            'quantity'      => $quantity,
-            'balance_after' => $balanceAfter,
-            'mode'          => $plan['mode'],
+            'item'               => $model->find($itemId),
+            'item_type'          => $itemType,
+            'tag'                => $tag,
+            'quantity'           => $stockInQty,
+            'registered_qty'     => $registeredQty,
+            'balance_after'      => $balanceAfter,
+            'mode'               => $plan['mode'],
+            'storage_zone_id'    => $storageZoneId,
+            'storage_zone_name'  => $storageZoneName,
         ];
     }
 
     /**
-     * @return array{mode: string, quantity: float, registered_qty: float, current_qty: float, tag_id: ?int, epc_no: string}
+     * Manual put-away location on Tag + Stock In (no RFID reader required).
      */
-    private function resolveTagStockInQuantity(string $itemType, array $item, string $epcNo): array
+    public function recordManualStorageLocation(
+        string $itemType,
+        int $itemId,
+        int $tagId,
+        string $zoneId
+    ): string {
+        $zone = (new ZoneModel())->where('zone_id', $zoneId)->where('status', 'active')->first();
+        if (!$zone) {
+            throw new \RuntimeException('Invalid storage location.');
+        }
+
+        $item = $this->getItem($itemType, $itemId);
+        if (!$item || !ProductModel::isZoneAllowedForProduct($item, $zoneId)) {
+            throw new \RuntimeException('This item is not allowed in the selected zone.');
+        }
+
+        $now         = date('Y-m-d H:i:s');
+        $today       = date('Y-m-d');
+        $recordModel = new InventoryZoneRecordModel();
+
+        $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $today);
+        if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
+            $recordModel->update($activeElsewhere['id'], ['check_out_time' => $now]);
+        }
+
+        $activeInZone = $recordModel->getActiveCheckInForTag($tagId, $zoneId, $today);
+        if ($activeInZone) {
+            $recordModel->update($activeInZone['id'], ['check_in_time' => $now]);
+        } else {
+            $recordModel->insert([
+                'item_type'     => $itemType,
+                'item_id'       => $itemId,
+                'tag_id'        => $tagId,
+                'zone_id'       => $zoneId,
+                'check_in_time' => $now,
+                'date'          => $today,
+            ]);
+        }
+
+        $itemModel = $itemType === 'product' ? new ProductModel() : new RawMaterialModel();
+        $itemModel->updateLastSeen($itemId, $zoneId);
+        (new InventoryItemTagModel())->updateLastSeen($tagId, $zoneId);
+
+        return $zone['zone_name'] ?? $zoneId;
+    }
+
+    /**
+     * @return array{mode: string, registered_qty: float, current_qty: float, tag_id: ?int, epc_no: string, max_stock_in: float}
+     */
+    private function resolveTagStockInPlan(string $itemType, array $item, string $epcNo): array
     {
         $itemId   = (int) $item['id'];
         $epcNo    = strtoupper(trim($epcNo));
         $tagModel = new InventoryItemTagModel();
         $existing = $tagModel->findByEpc($epcNo);
-        $label    = $itemType === 'product' ? 'product' : 'raw material';
+        $defaultFromMaster = normalize_inventory_qty(max(0, (float) ($item['qty_per_tag'] ?? 0)));
+        if ($defaultFromMaster <= 0) {
+            $defaultFromMaster = 1.0;
+        }
 
         if ($existing && ($existing['status'] ?? '') === 'active') {
             if ($existing['item_type'] !== $itemType || (int) $existing['item_id'] !== $itemId) {
@@ -570,22 +756,16 @@ class InventoryStockService
             }
 
             $current    = normalize_inventory_qty((float) ($existing['quantity'] ?? 0));
-            $registered = normalize_inventory_qty((float) ($existing['default_quantity'] ?? $existing['quantity'] ?? 0));
-
+            $registered = normalize_inventory_qty((float) ($existing['default_quantity'] ?? 0));
             if ($registered <= 0) {
-                throw new \RuntimeException('This tag has no registered quantity. Set Qty per Tag on the ' . $label . ' first.');
+                $registered = $defaultFromMaster;
             }
-            if ($current >= $registered - 0.0000001) {
-                throw new \RuntimeException('This tag is already fully stocked (' . format_inventory_qty($registered) . ').');
-            }
-
-            $quantity = normalize_inventory_qty($registered - $current);
 
             return [
-                'mode'           => 'restore',
-                'quantity'       => $quantity,
+                'mode'           => 'existing',
                 'registered_qty' => $registered,
                 'current_qty'    => $current,
+                'max_stock_in'   => max(0, $registered - $current),
                 'tag_id'         => (int) $existing['id'],
                 'epc_no'         => $epcNo,
             ];
@@ -600,19 +780,24 @@ class InventoryStockService
             throw new \RuntimeException('EPC tag is already registered to another item.');
         }
 
-        $quantity = normalize_inventory_qty(max(0, (float) ($item['qty_per_tag'] ?? 0)));
-        if ($quantity <= 0) {
-            throw new \RuntimeException('Set Qty per Tag on the ' . $label . ' master first — that becomes the stock-in quantity.');
-        }
-
         return [
             'mode'           => 'new',
-            'quantity'       => $quantity,
-            'registered_qty' => $quantity,
+            'registered_qty' => $defaultFromMaster,
             'current_qty'    => 0.0,
+            'max_stock_in'   => $defaultFromMaster,
             'tag_id'         => null,
             'epc_no'         => $epcNo,
         ];
+    }
+
+    /** @deprecated use resolveTagStockInPlan */
+    private function resolveTagStockInQuantity(string $itemType, array $item, string $epcNo): array
+    {
+        $plan = $this->resolveTagStockInPlan($itemType, $item, $epcNo);
+
+        return array_merge($plan, [
+            'quantity' => $plan['max_stock_in'],
+        ]);
     }
 
     /**
