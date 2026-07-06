@@ -126,13 +126,19 @@ $panel = $widgetConfig->panelDimensions();
         if (!loc) return '<span class="text-gray-500">—</span>';
         const tone = loc.status === 'in_zone'
             ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-            : (loc.status === 'last_seen'
-                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400');
+            : (loc.status === 'mixed'
+                ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200'
+                : (loc.status === 'last_seen'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'));
         const since = loc.since ? '<p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">' + esc(loc.since) + '</p>' : '';
+        const zoneLine = loc.zones && loc.zones.length > 1
+            ? '<ul class="text-sm font-bold mt-1 space-y-0.5 list-none">' +
+              loc.zones.map(z => '<li>' + esc(z) + '</li>').join('') + '</ul>'
+            : '<p class="text-sm font-bold">' + esc(loc.zone_name) + '</p>';
         return '<div class="mt-2 p-2.5 rounded-lg ' + tone + '">' +
             '<p class="text-[10px] font-bold uppercase tracking-wider opacity-80">' + esc(loc.label) + '</p>' +
-            '<p class="text-sm font-bold">' + esc(loc.zone_name) + '</p>' + since + '</div>';
+            zoneLine + since + '</div>';
     }
 
     function tagLocationBlock(loc) {
@@ -159,13 +165,8 @@ $panel = $widgetConfig->panelDimensions();
             '<p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">' + header + '</p>' +
             tags.map(t => {
                 const hi = t.highlighted || (highlightEpc && t.epc_no && t.epc_no.toUpperCase() === highlightEpc.toUpperCase());
-                const displayQty = t.display_quantity ?? t.quantity ?? 0;
                 const currentQty = t.quantity ?? 0;
                 const regQty = t.registered_quantity ?? 0;
-                let qtySub = 'reg ' + fmtQty(regQty);
-                if (Math.abs(currentQty - displayQty) > 0.0001) {
-                    qtySub = 'current ' + fmtQty(currentQty) + ' · reg ' + fmtQty(regQty);
-                }
                 return '<div class="flex items-start justify-between gap-2 p-2 rounded-lg text-xs ' +
                     (hi ? 'bg-primary/10 border border-primary/30' : 'bg-gray-50 dark:bg-gray-800/60') + '">' +
                     '<div class="min-w-0 flex-1">' +
@@ -174,8 +175,8 @@ $panel = $widgetConfig->panelDimensions();
                     tagLocationBlock(t.location) +
                     '</div>' +
                     '<div class="text-right shrink-0">' +
-                    '<p class="font-bold text-gray-900 dark:text-white tabular-nums">' + fmtQty(displayQty) + '</p>' +
-                    '<p class="text-[9px] text-gray-500">' + qtySub + '</p>' +
+                    '<p class="font-bold text-gray-900 dark:text-white tabular-nums">' + fmtQty(currentQty) + '</p>' +
+                    '<p class="text-[9px] text-gray-500">reg ' + fmtQty(regQty) + '</p>' +
                     '</div></div>';
             }).join('') + '</div>';
     }
@@ -216,7 +217,6 @@ $panel = $widgetConfig->panelDimensions();
                 '<div class="text-right shrink-0">' +
                 totalLabel +
                 '<p class="text-lg font-bold text-primary tabular-nums">' + fmtQty(r.total_balance ?? r.balance) + '</p>' +
-                '<p class="text-[10px] text-gray-500">' + esc(r.unit || 'pcs') + '</p>' +
                 '</div></div>' +
                 locationBadge(r.location) +
                 renderTagRows(r.tags, r.epc_no, r.locations_differ) +

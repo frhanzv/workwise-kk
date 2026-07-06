@@ -179,12 +179,8 @@ class InventoryStockService
         $tagCount = count($tags);
         $balance  = $tagCount > 0 ? (float) ($match['balance'] ?? $tagTotal) : (float) ($match['balance'] ?? 0);
 
-        $location         = $this->resolveFinderLocationSummary($tags, $type, $id, $tagId);
-        $locationZoneNames = array_values(array_unique(array_filter(array_map(
-            static fn ($t) => $t['location']['zone_name'] ?? '',
-            $tags
-        ))));
-        $locationsDiffer = count($locationZoneNames) > 1;
+        $location          = $this->resolveFinderLocationSummary($tags, $type, $id, $tagId);
+        $locationsDiffer   = $this->finderTagsLocationsDiffer($tags);
 
         return [
             'type'             => $type,
@@ -220,24 +216,52 @@ class InventoryStockService
             return $tags[0]['location'];
         }
 
-        $inZone = array_values(array_filter($tags, static fn ($t) => ($t['location']['status'] ?? '') === 'in_zone'));
-        if ($inZone !== []) {
-            $zones = array_values(array_unique(array_column(array_column($inZone, 'location'), 'zone_name')));
-            if (count($zones) > 1) {
+        $total         = count($tags);
+        $inZone        = array_values(array_filter($tags, static fn ($t) => ($t['location']['status'] ?? '') === 'in_zone'));
+        $inZoneCount   = count($inZone);
+        $allZoneNames  = $this->finderUniqueZoneNames($tags);
+        $inZoneNames   = $this->finderUniqueZoneNames($inZone);
+
+        if ($inZoneCount === $total) {
+            if (count($inZoneNames) > 1) {
                 return [
-                    'status'    => 'in_zone',
+                    'status'    => 'mixed',
                     'label'     => 'Multiple locations',
-                    'zone_name' => count($tags) . ' tags in ' . count($zones) . ' different zones',
+                    'zone_name' => implode(' · ', $inZoneNames),
                     'since'     => null,
                     'multi_tag' => true,
-                    'zones'     => $zones,
+                    'zones'     => $inZoneNames,
                 ];
             }
 
             return [
                 'status'    => 'in_zone',
-                'label'     => count($inZone) . ' of ' . count($tags) . ' tags in zone',
-                'zone_name' => $zones[0],
+                'label'     => $total . ' tags in zone',
+                'zone_name' => $inZoneNames[0] ?? '—',
+                'since'     => null,
+                'multi_tag' => true,
+            ];
+        }
+
+        if ($inZoneCount > 0) {
+            $elsewhere = $total - $inZoneCount;
+            if (count($allZoneNames) > 1) {
+                return [
+                    'status'    => 'mixed',
+                    'label'     => 'Split across locations',
+                    'zone_name' => implode(' · ', $allZoneNames),
+                    'since'     => null,
+                    'multi_tag' => true,
+                    'zones'     => $allZoneNames,
+                ];
+            }
+
+            $zoneLabel = $inZoneNames[0] ?? $allZoneNames[0] ?? '—';
+
+            return [
+                'status'    => 'mixed',
+                'label'     => $inZoneCount . ' of ' . $total . ' tags in zone',
+                'zone_name' => $zoneLabel . ' · ' . $elsewhere . ' tag' . ($elsewhere === 1 ? '' : 's') . ' not in zone',
                 'since'     => null,
                 'multi_tag' => true,
             ];
@@ -245,22 +269,22 @@ class InventoryStockService
 
         $lastSeen = array_values(array_filter($tags, static fn ($t) => ($t['location']['status'] ?? '') === 'last_seen'));
         if ($lastSeen !== []) {
-            $zones = array_values(array_unique(array_column(array_column($lastSeen, 'location'), 'zone_name')));
-            if (count($zones) > 1) {
+            $lastSeenNames = $this->finderUniqueZoneNames($lastSeen);
+            if (count($lastSeenNames) > 1) {
                 return [
-                    'status'    => 'last_seen',
+                    'status'    => 'mixed',
                     'label'     => 'Multiple locations',
-                    'zone_name' => count($tags) . ' tags — each at a different last zone',
+                    'zone_name' => implode(' · ', $lastSeenNames),
                     'since'     => null,
                     'multi_tag' => true,
-                    'zones'     => $zones,
+                    'zones'     => $lastSeenNames,
                 ];
             }
 
             return [
                 'status'    => 'last_seen',
-                'label'     => count($tags) . ' tags — last seen',
-                'zone_name' => $zones[0],
+                'label'     => $total . ' tags — last seen',
+                'zone_name' => $lastSeenNames[0] ?? '—',
                 'since'     => null,
                 'multi_tag' => true,
             ];
@@ -268,11 +292,48 @@ class InventoryStockService
 
         return [
             'status'    => 'unknown',
-            'label'     => count($tags) . ' tags',
+            'label'     => $total . ' tags',
             'zone_name' => 'Location unknown',
             'since'     => null,
             'multi_tag' => true,
         ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $tags
+     */
+    private function finderTagsLocationsDiffer(array $tags): bool
+    {
+        if (count($tags) <= 1) {
+            return false;
+        }
+
+        $keys = [];
+        foreach ($tags as $tag) {
+            $loc    = $tag['location'] ?? [];
+            $status = (string) ($loc['status'] ?? 'unknown');
+            $zone   = trim((string) ($loc['zone_name'] ?? ''));
+            $keys[$status . '|' . $zone] = true;
+        }
+
+        return count($keys) > 1;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $tags
+     * @return list<string>
+     */
+    private function finderUniqueZoneNames(array $tags): array
+    {
+        $names = [];
+        foreach ($tags as $tag) {
+            $name = trim((string) (($tag['location']['zone_name'] ?? '')));
+            if ($name !== '') {
+                $names[$name] = true;
+            }
+        }
+
+        return array_keys($names);
     }
 
     private function resolveItemLocation(string $itemType, int $itemId, ?int $tagId = null): array
