@@ -751,7 +751,8 @@ class RFID extends ResourceController
     }
     
     /**
-     * Process zone IN/OUT for products and raw materials (mirrors worker attendance).
+     * Process zone IN/OUT for products and raw materials.
+     * Sessions persist until checkout (not reset daily like workers).
      *
      * IN  → record zone check-in, restore tag stock up to registered quantity.
      * OUT → record zone check-out and deduct current tag quantity from stock.
@@ -789,16 +790,16 @@ class RFID extends ResourceController
         $duplicateInterval = $this->config->checkInToCheckOutInterval;
 
         if ($tagId) {
-            $activeRecord = $recordModel->getActiveCheckInForTag($tagId, $zoneId, $date);
+            $activeRecord = $recordModel->getActiveCheckInForTag($tagId, $zoneId);
             if (!$activeRecord) {
-                $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $date);
+                $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId);
                 if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
                     $recordModel->update($activeElsewhere['id'], ['check_out_time' => $timestamp]);
                 }
                 $activeRecord = null;
             }
         } else {
-            $activeRecord = $recordModel->getActiveCheckIn($itemType, $itemId, $zoneId, $date);
+            $activeRecord = $recordModel->getActiveCheckIn($itemType, $itemId, $zoneId);
         }
 
         if ($activeRecord) {
@@ -876,7 +877,6 @@ class RFID extends ResourceController
 
         $recentQuery = $recordModel
             ->where('zone_id', $zoneId)
-            ->where('date', $date)
             ->where('check_out_time IS NOT NULL');
 
         if ($tagId) {
@@ -903,12 +903,12 @@ class RFID extends ResourceController
         }
 
         if ($tagId) {
-            $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $date);
+            $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId);
             if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
                 $recordModel->update($activeElsewhere['id'], ['check_out_time' => $timestamp]);
             }
         } else {
-            $activeElsewhere = $recordModel->getActiveCheckInAnyZone($itemType, $itemId, $date);
+            $activeElsewhere = $recordModel->getActiveCheckInAnyZone($itemType, $itemId);
             if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
                 $recordModel->update($activeElsewhere['id'], ['check_out_time' => $timestamp]);
             }
@@ -928,7 +928,7 @@ class RFID extends ResourceController
         }
 
         // Close legacy untagged sessions only — each UHF tag tracks zone presence separately.
-        $recordModel->closeUntaggedSessionsForItem($itemType, $itemId, $date, $timestamp);
+        $recordModel->closeUntaggedSessionsForItem($itemType, $itemId, $timestamp);
 
         $insertData = [
             'item_type'     => $itemType,

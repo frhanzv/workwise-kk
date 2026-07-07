@@ -27,50 +27,49 @@ class InventoryZoneRecordModel extends Model
     protected $createdField  = 'created_at';
     protected $updatedField  = 'updated_at';
 
-    public function getActiveCheckIn(string $itemType, int $itemId, string $zoneId, string $date): ?array
+    public function getActiveCheckIn(string $itemType, int $itemId, string $zoneId): ?array
     {
         return $this->where('item_type', $itemType)
             ->where('item_id', $itemId)
             ->where('zone_id', $zoneId)
-            ->where('date', $date)
             ->where('check_out_time IS NULL')
+            ->orderBy('check_in_time', 'DESC')
             ->first();
     }
 
-    public function getActiveCheckInAnyZone(string $itemType, int $itemId, string $date): ?array
+    public function getActiveCheckInAnyZone(string $itemType, int $itemId): ?array
     {
         return $this->where('item_type', $itemType)
             ->where('item_id', $itemId)
-            ->where('date', $date)
             ->where('check_out_time IS NULL')
             ->where('tag_id IS NULL')
+            ->orderBy('check_in_time', 'DESC')
             ->first();
     }
 
-    public function getActiveCheckInForTag(int $tagId, string $zoneId, string $date): ?array
+    public function getActiveCheckInForTag(int $tagId, string $zoneId): ?array
     {
         return $this->where('tag_id', $tagId)
             ->where('zone_id', $zoneId)
-            ->where('date', $date)
             ->where('check_out_time IS NULL')
+            ->orderBy('check_in_time', 'DESC')
             ->first();
     }
 
-    public function getActiveCheckInAnyZoneForTag(int $tagId, string $date): ?array
+    public function getActiveCheckInAnyZoneForTag(int $tagId): ?array
     {
         return $this->where('tag_id', $tagId)
-            ->where('date', $date)
             ->where('check_out_time IS NULL')
+            ->orderBy('check_in_time', 'DESC')
             ->first();
     }
 
     /**
      * Close duplicate open sessions for the same tag (keep newest only).
      */
-    public function consolidateActiveSessionsForDate(string $date): void
+    public function consolidateActiveSessions(): void
     {
-        $actives = $this->where('date', $date)
-            ->where('check_out_time IS NULL')
+        $actives = $this->where('check_out_time IS NULL')
             ->orderBy('check_in_time', 'ASC')
             ->findAll();
 
@@ -84,8 +83,7 @@ class InventoryZoneRecordModel extends Model
         }
 
         // Drop legacy untagged open rows when the same item has a tagged session.
-        $actives = $this->where('date', $date)
-            ->where('check_out_time IS NULL')
+        $actives = $this->where('check_out_time IS NULL')
             ->findAll();
 
         $taggedItemKeys = [];
@@ -109,15 +107,18 @@ class InventoryZoneRecordModel extends Model
     /**
      * Close open sessions without tag_id (legacy scans) for an item.
      */
+    public function consolidateActiveSessionsForDate(string $date): void
+    {
+        $this->consolidateActiveSessions();
+    }
+
     public function closeUntaggedSessionsForItem(
         string $itemType,
         int $itemId,
-        string $date,
         string $checkOutTime
     ): void {
         $open = $this->where('item_type', $itemType)
             ->where('item_id', $itemId)
-            ->where('date', $date)
             ->where('tag_id IS NULL')
             ->where('check_out_time IS NULL')
             ->findAll();
@@ -130,12 +131,10 @@ class InventoryZoneRecordModel extends Model
     public function closeActiveSessionsForItem(
         string $itemType,
         int $itemId,
-        string $date,
         string $checkOutTime
     ): void {
         $open = $this->where('item_type', $itemType)
             ->where('item_id', $itemId)
-            ->where('date', $date)
             ->where('check_out_time IS NULL')
             ->findAll();
 

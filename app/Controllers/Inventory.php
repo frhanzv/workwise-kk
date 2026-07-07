@@ -179,7 +179,7 @@ class Inventory extends BaseController
         foreach ($records as $record) {
             $isIn        = empty($record['check_out_time']);
             $checkInTs   = strtotime($record['check_in_time']);
-            $canLive     = $isIn && $record['date'] === $today;
+            $canLive     = $isIn;
             $endTs       = $canLive ? $now : ($isIn ? $checkInTs : strtotime($record['check_out_time']));
 
             $scanRecords[] = [
@@ -269,7 +269,7 @@ class Inventory extends BaseController
     {
         $recordModel = new InventoryZoneRecordModel();
         if ($dateRange['is_today']) {
-            $recordModel->consolidateActiveSessionsForDate($dateRange['start_date']);
+            $recordModel->consolidateActiveSessions();
         }
 
         (new InventoryStockService())->syncAllTaggedItemBalances();
@@ -309,15 +309,18 @@ class Inventory extends BaseController
 
     private function getZoneRecords(?string $zoneId, string $startDate, string $endDate): array
     {
-        $query = (new InventoryZoneRecordModel())
-            ->where('date >=', $startDate)
-            ->where('date <=', $endDate);
+        $query = (new InventoryZoneRecordModel());
 
         if ($zoneId) {
-            $query->where('zone_id', $zoneId);
+            $query = $query->where('zone_id', $zoneId);
         }
 
         return $query
+            ->groupStart()
+                ->where('date >=', $startDate)
+                ->where('date <=', $endDate)
+                ->orWhere('check_out_time IS NULL', null, false)
+            ->groupEnd()
             ->orderBy('COALESCE(check_out_time, check_in_time)', 'DESC', false)
             ->findAll();
     }
@@ -1300,7 +1303,7 @@ class Inventory extends BaseController
         foreach ($records as $record) {
             $isIn      = empty($record['check_out_time']);
             $checkInTs = strtotime($record['check_in_time']);
-            $canLive   = $isIn && $record['date'] === $today;
+            $canLive   = $isIn;
             $endTs     = $canLive ? $now : ($isIn ? $checkInTs : strtotime($record['check_out_time']));
 
             $scanRecords[] = [

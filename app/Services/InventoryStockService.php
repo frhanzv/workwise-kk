@@ -339,16 +339,15 @@ class InventoryStockService
 
     private function resolveItemLocation(string $itemType, int $itemId, ?int $tagId = null): array
     {
-        $today       = date('Y-m-d');
         $recordModel = new InventoryZoneRecordModel();
         $zoneModel   = new ZoneModel();
         $active      = null;
 
         if ($tagId) {
-            $active = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $today);
+            $active = $recordModel->getActiveCheckInAnyZoneForTag($tagId);
         }
         if (!$active) {
-            $active = $recordModel->getActiveCheckInAnyZone($itemType, $itemId, $today);
+            $active = $recordModel->getActiveCheckInAnyZone($itemType, $itemId);
         }
 
         if ($active) {
@@ -800,12 +799,12 @@ class InventoryStockService
         $today       = date('Y-m-d');
         $recordModel = new InventoryZoneRecordModel();
 
-        $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId, $today);
+        $activeElsewhere = $recordModel->getActiveCheckInAnyZoneForTag($tagId);
         if ($activeElsewhere && $activeElsewhere['zone_id'] !== $zoneId) {
             $recordModel->update($activeElsewhere['id'], ['check_out_time' => $now]);
         }
 
-        $activeInZone = $recordModel->getActiveCheckInForTag($tagId, $zoneId, $today);
+        $activeInZone = $recordModel->getActiveCheckInForTag($tagId, $zoneId);
         if ($activeInZone) {
             $recordModel->update($activeInZone['id'], ['check_in_time' => $now]);
         } else {

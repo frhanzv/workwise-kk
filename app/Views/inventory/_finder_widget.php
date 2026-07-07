@@ -40,9 +40,17 @@ $panel = $widgetConfig->panelDimensions();
             <input
                 type="text"
                 id="stock-finder-input"
-                class="block w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-primary focus:ring-primary text-sm"
+                class="block w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-primary focus:ring-primary text-sm font-mono"
                 placeholder="UHF tag, batch code, or item name…"
                 autocomplete="off"/>
+            <button
+                type="button"
+                id="stock-finder-clear"
+                onclick="clearFinderSearch()"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors hidden"
+                title="Clear search">
+                <span class="material-symbols-outlined text-lg">close</span>
+            </button>
         </div>
         <p id="stock-finder-hint" class="text-xs text-gray-500 dark:text-gray-400">Type or scan — shows where the item is right now.</p>
         <div id="stock-finder-results" class="space-y-2"></div>
@@ -59,15 +67,51 @@ $panel = $widgetConfig->panelDimensions();
     const scansUrl  = <?= json_encode(base_url('inventory/search-stock/scans')) ?>;
     let finderTimer = null;
     let lastFinderQ = '';
+    let lastFinderKeyAt = 0;
     let pollTs = Date.now() / 1000;
     let pollId = null;
     const seenIds = new Set();
+
+    function looksLikeEpc(s) {
+        const t = String(s || '').trim();
+        return t.length >= 12 && /^[A-Fa-f0-9]+$/.test(t);
+    }
+
+    function updateFinderClearBtn() {
+        const btn = document.getElementById('stock-finder-clear');
+        const hasText = !!document.getElementById('stock-finder-input').value.trim();
+        if (btn) btn.classList.toggle('hidden', !hasText);
+    }
+
+    function setFinderInput(value, runSearch) {
+        const input = document.getElementById('stock-finder-input');
+        input.value = value;
+        lastFinderQ = '';
+        updateFinderClearBtn();
+        if (runSearch) {
+            clearTimeout(finderTimer);
+            runFinderSearch();
+            input.select();
+        }
+    }
+
+    window.clearFinderSearch = function () {
+        const input = document.getElementById('stock-finder-input');
+        input.value = '';
+        lastFinderQ = '';
+        document.getElementById('stock-finder-results').innerHTML = '';
+        document.getElementById('stock-finder-hint').textContent = 'Type or scan — shows where the item is right now.';
+        updateFinderClearBtn();
+        input.focus();
+    };
 
     window.openStockFinder = function () {
         document.getElementById('stock-finder-btn').classList.add('hidden');
         document.getElementById('stock-finder-panel').classList.remove('hidden');
         const input = document.getElementById('stock-finder-input');
         input.focus();
+        input.select();
+        updateFinderClearBtn();
         startFinderPoll();
     };
 
@@ -104,9 +148,7 @@ $panel = $widgetConfig->panelDimensions();
                 seenIds.add(scan.id);
                 pollTs = Math.max(pollTs, scan.ts || pollTs);
                 if (scan.epc) {
-                    document.getElementById('stock-finder-input').value = scan.epc;
-                    lastFinderQ = '';
-                    runFinderSearch();
+                    setFinderInput(scan.epc, true);
                 }
             }
         } catch (e) { /* retry next poll */ }
@@ -188,6 +230,8 @@ $panel = $widgetConfig->panelDimensions();
         if (!results.length) {
             hint.textContent = 'No match for “' + query + '”. Try tag, batch code, or name.';
             el.innerHTML = '';
+            const input = document.getElementById('stock-finder-input');
+            if (input) input.select();
             return;
         }
 
@@ -197,6 +241,9 @@ $panel = $widgetConfig->panelDimensions();
             hintText += ' · ' + tagTotal + ' UHF tag' + (tagTotal === 1 ? '' : 's') + ' total';
         }
         hint.textContent = hintText + ' for “' + query + '”';
+
+        const input = document.getElementById('stock-finder-input');
+        if (input) input.select();
 
         el.innerHTML = results.map(r => {
             const tagBadge = (r.tag_count || 0) > 0
@@ -225,15 +272,17 @@ $panel = $widgetConfig->panelDimensions();
         }).join('');
     }
 
-    async function runFinderSearch() {
-        const q = document.getElementById('stock-finder-input').value.trim();
+    async function runFinderSearch(force) {
+        const input = document.getElementById('stock-finder-input');
+        const q = input.value.trim();
+        updateFinderClearBtn();
         if (!q) {
             document.getElementById('stock-finder-results').innerHTML = '';
             document.getElementById('stock-finder-hint').textContent = 'Type or scan — shows where the item is right now.';
             lastFinderQ = '';
             return;
         }
-        if (q === lastFinderQ) return;
+        if (!force && q === lastFinderQ) return;
         lastFinderQ = q;
 
         document.getElementById('stock-finder-hint').textContent = 'Searching…';
@@ -256,14 +305,31 @@ $panel = $widgetConfig->panelDimensions();
     window.runFinderSearch = runFinderSearch;
 
     document.getElementById('stock-finder-input')?.addEventListener('input', function () {
+        updateFinderClearBtn();
         clearTimeout(finderTimer);
         finderTimer = setTimeout(runFinderSearch, 350);
     });
+    document.getElementById('stock-finder-input')?.addEventListener('focus', function () {
+        if (this.value.trim()) this.select();
+    });
     document.getElementById('stock-finder-input')?.addEventListener('keydown', function (e) {
+        const now = Date.now();
+        const gap = now - lastFinderKeyAt;
+        lastFinderKeyAt = now;
+
+        // New scan after pause — replace previous tag (not item-name typing)
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (looksLikeEpc(this.value) && gap > 200) {
+                this.value = '';
+                lastFinderQ = '';
+            }
+        }
+
         if (e.key === 'Enter') {
             e.preventDefault();
             clearTimeout(finderTimer);
-            runFinderSearch();
+            runFinderSearch(true);
+            this.select();
         }
         if (e.key === 'Escape') closeStockFinder();
     });
