@@ -11,7 +11,12 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300';
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Stock Check</h1>
             <p class="text-sm text-gray-500 dark:text-gray-400">Count physical stock via UHF tag or product batch QR code.</p>
         </div>
-        <a href="<?= base_url('inventory/monitoring') ?>" class="text-sm text-primary hover:underline">← Back to Inventory Monitoring</a>
+        <div class="flex flex-wrap items-center gap-3">
+            <a href="<?= base_url('inventory/stock-check/discrepancies-page') ?>" class="px-4 py-2 rounded-lg text-sm font-bold border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+                Discrepancy Records
+            </a>
+            <a href="<?= base_url('inventory/monitoring') ?>" class="text-sm text-primary hover:underline">← Back to Inventory Monitoring</a>
+        </div>
     </div>
 
     <div class="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-sm text-blue-900 dark:text-blue-100 space-y-2">
@@ -19,7 +24,7 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300';
         <ul class="list-disc pl-5 space-y-1 text-blue-800 dark:text-blue-200">
             <li>Set the desk antenna to <strong>LOOKUP</strong> or <strong>STOCK CHECK</strong> in Zones — not IN/OUT.</li>
             <li>After you start a check, scans appear here automatically (same as Search Stock / Tag + Stock In).</li>
-            <li>On complete, any registered tags <strong>not scanned</strong> are automatically <strong>stocked out</strong> and listed in the results.</li>
+            <li>On complete, any registered tags <strong>not scanned</strong> are recorded as discrepancies (inventory balance is <strong>not</strong> changed).</li>
         </ul>
     </div>
 
@@ -69,8 +74,11 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300';
         <div class="xl:col-span-2 bg-white dark:bg-background-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 relative">
             <h2 class="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">2. Scan &amp; Count</h2>
 
+            <div id="result-panel" class="hidden p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-sm space-y-2 text-gray-900 dark:text-amber-100"></div>
+
+            <div class="relative space-y-4">
             <div id="scan-panel-lock" class="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-gray-900/40 dark:bg-black/50 backdrop-blur-[1px]">
-                <p class="text-sm font-medium text-white px-4 py-2 rounded-lg bg-gray-900/80 dark:bg-gray-800/90 border border-gray-600">Click <strong>Start Stock Check</strong> first</p>
+                <p id="scan-panel-lock-msg" class="text-sm font-medium text-white px-4 py-2 rounded-lg bg-gray-900/80 dark:bg-gray-800/90 border border-gray-600">Click <strong>Start Stock Check</strong> first</p>
             </div>
 
             <div id="scan-panel" class="space-y-4 opacity-40 pointer-events-none">
@@ -118,24 +126,23 @@ $labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300';
                     <textarea id="notes" rows="2" placeholder="Notes..." class="<?= $inputClass ?>"></textarea>
                     <button type="button" onclick="completeCheck()" id="btn-complete" disabled class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Complete Stock Check</button>
                 </div>
-
-                <div id="result-panel" class="hidden p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-sm space-y-2 text-gray-900 dark:text-amber-100"></div>
+            </div>
             </div>
         </div>
     </div>
 </div>
 
-<div id="complete-confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 dark:bg-black/60">
+<div id="complete-confirm-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/50 dark:bg-black/60">
     <div class="w-full max-w-md rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-background-dark shadow-xl p-6 space-y-4">
         <div>
             <h3 class="text-lg font-bold text-gray-900 dark:text-white">Complete stock check?</h3>
             <p id="complete-confirm-summary" class="mt-2 text-sm text-gray-600 dark:text-gray-300"></p>
         </div>
-        <ul id="complete-confirm-tags" class="text-xs font-mono space-y-1 max-h-40 overflow-y-auto p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-200"></ul>
-        <p class="text-xs text-gray-500 dark:text-gray-400">These tags will be stocked out and removed from the on-hand balance.</p>
+        <ul id="complete-confirm-tags" class="text-xs font-mono space-y-1 max-h-40 overflow-y-auto p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200"></ul>
+        <p class="text-xs text-gray-500 dark:text-gray-400">These will be saved to discrepancy records. Stock balance will not change.</p>
         <div class="flex flex-wrap justify-end gap-3 pt-1">
             <button type="button" id="complete-confirm-cancel" class="px-4 py-2 rounded-lg text-sm font-bold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
-            <button type="button" id="complete-confirm-ok" class="px-4 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-700 text-white transition-colors">Stock out &amp; complete</button>
+            <button type="button" id="complete-confirm-ok" class="px-4 py-2 rounded-lg text-sm font-bold bg-green-600 hover:bg-green-700 text-white transition-colors">Complete check</button>
         </div>
     </div>
 </div>
@@ -184,12 +191,20 @@ function unlockScanPanel() {
     document.getElementById('scan-panel-lock').classList.add('hidden');
     const panel = document.getElementById('scan-panel');
     panel.classList.remove('opacity-40', 'pointer-events-none');
+    document.getElementById('scan-panel-lock-msg').innerHTML = 'Click <strong>Start Stock Check</strong> first';
+    document.getElementById('result-panel').classList.add('hidden');
 }
 
-function lockScanPanel() {
-    document.getElementById('scan-panel-lock').classList.remove('hidden');
+function lockScanPanel(completed = false) {
+    const lock = document.getElementById('scan-panel-lock');
     const panel = document.getElementById('scan-panel');
     panel.classList.add('opacity-40', 'pointer-events-none');
+    if (completed) {
+        lock.classList.add('hidden');
+    } else {
+        lock.classList.remove('hidden');
+        document.getElementById('scan-panel-lock-msg').innerHTML = 'Click <strong>Start Stock Check</strong> first';
+    }
 }
 
 function populateItems() {
@@ -259,7 +274,7 @@ function paintTagStatus(data) {
     const missingList = document.getElementById('missing-tags-list');
     const scannedTags = data.scanned_tags || [];
     const missingTags = data.missing_tags || [];
-    currentMissingTags = missingTags.filter(t => (Number(t.current_quantity ?? t.quantity) || 0) > 0);
+    currentMissingTags = missingTags;
 
     scannedList.innerHTML = scannedTags.map(t => {
         const label = t.label ? escapeHtml(t.label) + ' — ' : '';
@@ -381,8 +396,8 @@ async function submitScan(fromPoll = false) {
     }
 }
 
-function missingTagsToStockOut() {
-    return currentMissingTags.filter(t => (Number(t.current_quantity ?? t.quantity) || 0) > 0);
+function tagsNotScanned() {
+    return currentMissingTags;
 }
 
 function showCompleteConfirmModal(tags) {
@@ -391,10 +406,10 @@ function showCompleteConfirmModal(tags) {
         const count = tags.length;
         const noun = count === 1 ? 'tag was' : 'tags were';
         document.getElementById('complete-confirm-summary').textContent =
-            `${count} ${noun} not scanned. Stock them out and complete this check?`;
+            `${count} ${noun} not scanned. Record as discrepancy and complete this check?`;
         document.getElementById('complete-confirm-tags').innerHTML = tags.map(t => {
             const label = t.label ? escapeHtml(t.label) + ' — ' : '';
-            const qty = formatInventoryQty(t.current_quantity ?? t.quantity);
+            const qty = formatInventoryQty(t.quantity ?? t.current_quantity);
             return `<li>${label}${escapeHtml(t.epc_no)} (${qty})</li>`;
         }).join('');
 
@@ -421,9 +436,9 @@ function showCompleteConfirmModal(tags) {
 async function completeCheck() {
     if (!sessionId) return;
 
-    const pendingStockOut = scanMethod === 'uhf' ? missingTagsToStockOut() : [];
-    if (pendingStockOut.length > 0) {
-        const confirmed = await showCompleteConfirmModal(pendingStockOut);
+    const pending = scanMethod === 'uhf' ? tagsNotScanned() : [];
+    if (pending.length > 0) {
+        const confirmed = await showCompleteConfirmModal(pending);
         if (!confirmed) return;
     }
 
@@ -445,12 +460,12 @@ async function completeCheck() {
 
     if (data.expected_tag_count > 0) {
         html += `<p class="mt-2"><strong>Tags scanned:</strong> ${data.scanned_tag_count} / ${data.expected_tag_count}</p>`;
-        const stockedOut = data.stocked_out_tags?.length ? data.stocked_out_tags : data.missing_tags;
-        if (stockedOut?.length) {
-            html += '<div class="mt-3 p-3 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20">';
-            html += '<p class="font-bold text-red-800 dark:text-red-300">Stocked out (not scanned):</p>';
-            html += '<ul class="list-disc pl-5 mt-2 space-y-1 font-mono text-xs text-red-900 dark:text-red-200">';
-            stockedOut.forEach(t => {
+        const discrepancies = data.discrepancies?.length ? data.discrepancies : data.missing_tags;
+        if (discrepancies?.length) {
+            html += '<div class="mt-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">';
+            html += '<p class="font-bold text-amber-800 dark:text-amber-300">Recorded as discrepancy (not scanned):</p>';
+            html += '<ul class="list-disc pl-5 mt-2 space-y-1 font-mono text-xs text-amber-900 dark:text-amber-200">';
+            discrepancies.forEach(t => {
                 const label = t.label ? escapeHtml(t.label) + ' — ' : '';
                 html += `<li>${label}${escapeHtml(t.epc_no)} (${formatInventoryQty(t.quantity)})</li>`;
             });
@@ -464,22 +479,23 @@ async function completeCheck() {
             });
             html += '</ul>';
         }
-    }
-
-    if (data.stock_out_list && data.stock_out_list.length && !data.stocked_out_tags?.length) {
-        html += '<p class="font-bold mt-2">Recent Stock Out (possible variance cause):</p><ul class="list-disc pl-5 space-y-1">';
-        data.stock_out_list.forEach(t => {
-            const bal = t.balance_after != null ? ` (bal ${formatInventoryQty(t.balance_after)})` : '';
-            html += `<li>${escapeHtml(t.datetime)} — ${escapeHtml(t.transaction_label)} ${formatInventoryQty(t.quantity)}${bal}</li>`;
+    } else if (data.discrepancies?.length) {
+        html += '<div class="mt-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">';
+        html += '<p class="font-bold text-amber-800 dark:text-amber-300">Recorded as discrepancy:</p>';
+        html += '<ul class="list-disc pl-5 mt-2 space-y-1 text-xs">';
+        data.discrepancies.forEach(t => {
+            html += `<li>${escapeHtml(t.label || t.epc_no)} (${formatInventoryQty(t.quantity)})</li>`;
         });
-        html += '</ul>';
+        html += '</ul></div>';
     }
     panel.innerHTML = html;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     sessionId = null;
     document.getElementById('btn-scan').disabled = true;
     document.getElementById('btn-complete').disabled = true;
-    lockScanPanel();
+    lockScanPanel(true);
+
 }
 
 document.getElementById('scan_epc').addEventListener('keydown', e => {
@@ -490,6 +506,7 @@ document.getElementById('scan_qr').addEventListener('keydown', e => {
 });
 
 window.addEventListener('beforeunload', stopListenPoll);
+
 </script>
 
 <?= $this->include('templates/footer') ?>

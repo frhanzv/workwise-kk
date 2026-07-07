@@ -7,6 +7,7 @@ use App\Models\InventoryItemTagModel;
 use App\Models\InventoryZoneRecordModel;
 use App\Models\ProductModel;
 use App\Models\RawMaterialModel;
+use App\Models\StockCheckDiscrepancyModel;
 use App\Models\StockCheckScanModel;
 use App\Models\StockCheckSessionModel;
 use App\Models\ZoneModel;
@@ -1311,32 +1312,14 @@ class InventoryStockService
             $scanMethod
         );
 
-        $stockedOutTags = [];
-        if ($scanMethod === 'uhf' && !empty($tagReport['missing_tags'])) {
-            foreach ($tagReport['missing_tags'] as $missing) {
-                $tag = null;
-                if (!empty($missing['tag_id'])) {
-                    $tag = (new InventoryItemTagModel())->find((int) $missing['tag_id']);
-                }
-                if (!$tag && !empty($missing['epc_no'])) {
-                    $tag = (new InventoryItemTagModel())->getByEpc((string) $missing['epc_no']);
-                }
-                if (!$tag) {
-                    continue;
-                }
-
-                $result = $this->stockOutMissingTagForStockCheck(
-                    $session['item_type'],
-                    (int) $session['item_id'],
-                    $tag,
-                    $sessionId,
-                    $userId
-                );
-                if ($result !== null) {
-                    $stockedOutTags[] = $result;
-                }
-            }
-        }
+        // Stock check is audit-only: never auto stock in/out.
+        $discrepancies = $this->recordStockCheckDiscrepancies(
+            $session,
+            $sessionId,
+            $tagReport,
+            $variance,
+            $userId
+        );
 
         (new StockCheckSessionModel())->update($sessionId, [
             'status'          => 'completed',
@@ -1346,42 +1329,6 @@ class InventoryStockService
             'completed_at'    => date('Y-m-d H:i:s'),
         ]);
 
-        $isUhfTagged = $scanMethod === 'uhf'
-            && $this->itemHasActiveTags($session['item_type'], (int) $session['item_id']);
-
-        $stockOutList = [];
-        if ($stockedOutTags !== []) {
-            foreach ($stockedOutTags as $row) {
-                $label = trim((string) ($row['label'] ?? ''));
-                $stockOutList[] = [
-                    'transaction_label' => 'Stock Out (not scanned)',
-                    'quantity'          => $row['quantity'],
-                    'balance_after'     => null,
-                    'scan_reference'    => $row['epc_no'],
-                    'label'             => $label,
-                    'datetime'          => date('d M Y H:i'),
-                ];
-            }
-        } elseif ($variance < 0) {
-            $stockOutList = $this->getRecentStockOuts($session['item_type'], (int) $session['item_id'], 20);
-        }
-
-        if ($variance !== 0.0 && !$isUhfTagged) {
-            $this->applyMovement(
-                $session['item_type'],
-                (int) $session['item_id'],
-                'stock_check_adjust',
-                abs($variance),
-                'manual',
-                'stock_check:' . $sessionId,
-                null,
-                $userId,
-                'Stock check variance adjustment',
-                $sessionId,
-                $variance > 0
-            );
-        }
-
         $item = $this->getItem($session['item_type'], (int) $session['item_id']);
 
         return [
@@ -1390,10 +1337,157 @@ class InventoryStockService
             'counted_balance'  => $counted,
             'variance'         => $variance,
             'balance_after'    => (float) ($item['quantity_on_hand'] ?? 0),
-            'stock_out_list'   => $stockOutList,
-            'stocked_out_tags' => $stockedOutTags,
+            'discrepancies'    => $discrepancies,
             'scans'            => $this->formatStockCheckScans($sessionId),
         ] + $tagReport;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getStockCheckDiscrepancies(int $limit = 200): array
+    {
+        $rows = (new StockCheckDiscrepancyModel())
+            ->orderBy('created_at', 'DESC')
+            ->findAll($limit);
+
+        if ($rows === []) {
+            return [];
+        }
+
+        $productIds  = [];
+        $materialIds = [];
+        foreach ($rows as $row) {
+            if ($row['item_type'] === 'product') {
+                $productIds[] = (int) $row['item_id'];
+            } else {
+                $materialIds[] = (int) $row['item_id'];
+            }
+        }
+
+        $products = [];
+        if ($productIds !== []) {
+            foreach ((new ProductModel())->whereIn('id', array_unique($productIds))->findAll() as $p) {
+                $products[(int) $p['id']] = $p;
+            }
+        }
+        $materials = [];
+        if ($materialIds !== []) {
+            foreach ((new RawMaterialModel())->whereIn('id', array_unique($materialIds))->findAll() as $m) {
+                $materials[(int) $m['id']] = $m;
+            }
+        }
+
+        $formatted = [];
+        foreach ($rows as $row) {
+            $isProduct = $row['item_type'] === 'product';
+            $item      = $isProduct
+                ? ($products[(int) $row['item_id']] ?? null)
+                : ($materials[(int) $row['item_id']] ?? null);
+            if (!$item) {
+                continue;
+            }
+
+            $code = $isProduct ? ($item['product_code'] ?? '') : ($item['material_code'] ?? '');
+            $name = $isProduct ? ($item['product_name'] ?? '') : ($item['material_name'] ?? '');
+            $epc  = trim((string) ($row['epc_no'] ?? ''));
+            $label = trim((string) ($row['tag_label'] ?? ''));
+            $notScanned = $epc !== ''
+                ? ($label !== '' ? $label . ' — ' . $epc : $epc)
+                : ($label !== '' ? $label : 'Count variance');
+
+            $createdAt = $row['created_at'] ?? '';
+            $formatted[] = [
+                'id'           => (int) $row['id'],
+                'session_id'   => (int) $row['session_id'],
+                'datetime'     => $createdAt ? date('d-M-y H:i', strtotime($createdAt)) : '—',
+                'datetime_sort'=> $createdAt,
+                'item_type'    => $row['item_type'],
+                'type_label'   => $isProduct ? 'Product' : 'Raw Material',
+                'item_code'    => $code,
+                'item_name'    => $name,
+                'item_label'   => $code . ' — ' . $name,
+                'not_scanned'  => $notScanned,
+                'quantity'     => normalize_inventory_qty((float) ($row['quantity'] ?? 0)),
+                'quantity_fmt' => format_inventory_qty((float) ($row['quantity'] ?? 0)),
+                'unit'         => $item['unit'] ?? '',
+            ];
+        }
+
+        return $formatted;
+    }
+
+    /**
+     * @param array<string, mixed> $session
+     * @param array{missing_tags?: list<array>} $tagReport
+     * @return list<array<string, mixed>>
+     */
+    private function recordStockCheckDiscrepancies(
+        array $session,
+        int $sessionId,
+        array $tagReport,
+        float $variance,
+        ?int $userId
+    ): array {
+        $itemType = $session['item_type'];
+        $itemId   = (int) $session['item_id'];
+        $scanMethod = $session['scan_method'] ?? 'qr';
+        $model    = new StockCheckDiscrepancyModel();
+        $saved    = [];
+        $now      = date('Y-m-d H:i:s');
+
+        if ($scanMethod === 'uhf' && !empty($tagReport['missing_tags'])) {
+            foreach ($tagReport['missing_tags'] as $missing) {
+                $qty = normalize_inventory_qty((float) ($missing['quantity'] ?? $missing['current_quantity'] ?? 0));
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $epc = strtoupper(trim((string) ($missing['epc_no'] ?? '')));
+                $model->insert([
+                    'session_id' => $sessionId,
+                    'item_type'  => $itemType,
+                    'item_id'    => $itemId,
+                    'tag_id'     => !empty($missing['tag_id']) ? (int) $missing['tag_id'] : null,
+                    'epc_no'     => $epc !== '' ? $epc : null,
+                    'tag_label'  => trim((string) ($missing['label'] ?? '')) ?: null,
+                    'quantity'   => $qty,
+                    'user_id'    => $userId,
+                ]);
+
+                $saved[] = [
+                    'epc_no'   => $epc,
+                    'label'    => trim((string) ($missing['label'] ?? '')),
+                    'quantity' => $qty,
+                    'datetime' => date('d M Y H:i', strtotime($now)),
+                ];
+            }
+        } elseif ($scanMethod !== 'uhf' && abs($variance) > 0.0000001) {
+            $item = $this->getItem($itemType, $itemId);
+            $code = $itemType === 'product'
+                ? ($item['product_code'] ?? '')
+                : ($item['material_code'] ?? '');
+
+            $model->insert([
+                'session_id' => $sessionId,
+                'item_type'  => $itemType,
+                'item_id'    => $itemId,
+                'tag_id'     => null,
+                'epc_no'     => null,
+                'tag_label'  => $variance < 0 ? 'Physical count short' : 'Physical count over',
+                'quantity'   => normalize_inventory_qty(abs($variance)),
+                'user_id'    => $userId,
+            ]);
+
+            $saved[] = [
+                'epc_no'   => $code,
+                'label'    => $variance < 0 ? 'Physical count short' : 'Physical count over',
+                'quantity' => normalize_inventory_qty(abs($variance)),
+                'datetime' => date('d M Y H:i', strtotime($now)),
+            ];
+        }
+
+        return $saved;
     }
 
     /**
@@ -1994,6 +2088,9 @@ class InventoryStockService
      * Example (registered 10): stock in 10 → in 10 / out 0 / run 10;
      * stock out 5 → in 10 / out 5 / run 5; stock in 5 → in 5 / out 5 / run 10.
      *
+     * Example (registered 15): stock in 15 / out 15 / run 0, then stock in 10 → in 10 / out 5 / run 10
+     * (unfilled registered capacity counts as Qty Out).
+     *
      * @param list<array<string, mixed>> $transactions
      * @return array{qty_in: float, qty_out: float, last_at: ?string}
      */
@@ -2094,9 +2191,26 @@ class InventoryStockService
 
         return [
             'qty_in'  => normalize_inventory_qty($currentQty + $outSinceFull),
-            'qty_out' => $outSinceFull,
+            'qty_out' => $this->resolveLedgerQtyOut($registered, $currentQty, $outSinceFull),
             'last_at' => $lastAt,
         ];
+    }
+
+    /**
+     * Qty Out for the current cycle. When below registered capacity with no physical outs
+     * this cycle, the unfilled portion (registered − running) counts as out.
+     */
+    private function resolveLedgerQtyOut(float $registered, float $currentQty, float $outSinceFull): float
+    {
+        if ($outSinceFull > 0.0000001) {
+            return $outSinceFull;
+        }
+
+        if ($registered > 0 && $currentQty < $registered - 0.0000001) {
+            return normalize_inventory_qty($registered - $currentQty);
+        }
+
+        return 0.0;
     }
 
     private function resolveTransactionEpc(array $row): ?string

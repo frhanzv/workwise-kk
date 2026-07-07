@@ -1036,6 +1036,71 @@ class Inventory extends BaseController
         }
     }
 
+    public function stockCheckDiscrepancies()
+    {
+        $limit = (int) ($this->request->getGet('limit') ?? 200);
+        if ($limit < 1) {
+            $limit = 200;
+        }
+        if ($limit > 500) {
+            $limit = 500;
+        }
+
+        $rows = (new InventoryStockService())->getStockCheckDiscrepancies($limit);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'rows'    => $rows,
+            'total'   => count($rows),
+        ]);
+    }
+
+    public function stockCheckDiscrepanciesPage()
+    {
+        $limit = (int) ($this->request->getGet('limit') ?? 500);
+        if ($limit < 1) {
+            $limit = 500;
+        }
+        if ($limit > 2000) {
+            $limit = 2000;
+        }
+
+        $rows = (new InventoryStockService())->getStockCheckDiscrepancies($limit);
+
+        return view('inventory/stock_check_discrepancies', [
+            'title' => 'Stock Check Discrepancy Records',
+            'user'  => $this->getLoggedInUser(),
+            'rows'  => $rows,
+        ]);
+    }
+
+    public function stockCheckDiscrepanciesExport()
+    {
+        $rows = (new InventoryStockService())->getStockCheckDiscrepancies(5000);
+        $filename = 'stock-check-discrepancies-' . date('Ymd-His') . '.xls';
+
+        $output = fopen('php://temp', 'r+');
+        fputcsv($output, ['Date & Time', 'Item Type', 'Item', 'Not Scanned', 'Qty', 'Unit']);
+        foreach ($rows as $row) {
+            fputcsv($output, [
+                $row['datetime'] ?? '',
+                $row['type_label'] ?? '',
+                $row['item_label'] ?? '',
+                $row['not_scanned'] ?? '',
+                $row['quantity_fmt'] ?? '',
+                $row['unit'] ?? '',
+            ]);
+        }
+        rewind($output);
+        $csv = stream_get_contents($output);
+        fclose($output);
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/vnd.ms-excel; charset=UTF-8')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->setBody($csv ?: '');
+    }
+
     public function stockMovement()
     {
         $direction = $this->request->getPost('direction');

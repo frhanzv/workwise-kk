@@ -98,6 +98,9 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('inventory/stock-check/start', 'Inventory::stockCheckStart');
     $routes->post('inventory/stock-check/scan', 'Inventory::stockCheckScan');
     $routes->post('inventory/stock-check/complete', 'Inventory::stockCheckComplete');
+    $routes->get('inventory/stock-check/discrepancies', 'Inventory::stockCheckDiscrepancies');
+    $routes->get('inventory/stock-check/discrepancies-page', 'Inventory::stockCheckDiscrepanciesPage');
+    $routes->get('inventory/stock-check/discrepancies-export', 'Inventory::stockCheckDiscrepanciesExport');
     $routes->get('inventory/stock-ledger', 'Inventory::stockLedger');
     $routes->get('inventory/stock-ledger-data', 'Inventory::stockLedgerData');
     $routes->get('inventory/location-mismatch', 'Inventory::locationMismatch');
