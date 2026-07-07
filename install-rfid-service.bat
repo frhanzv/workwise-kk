@@ -1,4 +1,6 @@
 @echo off
+setlocal EnableDelayedExpansion
+
 echo ================================================
 echo   Install RFID Listener as Windows Service
 echo ================================================
@@ -14,37 +16,80 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
+cd /d "%~dp0"
+set "PROJECT_DIR=%~dp0"
+if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
+
+set "PHP_EXE="
+where php >nul 2>&1
+if %errorLevel% equ 0 (
+    for /f "delims=" %%i in ('where php 2^>nul') do (
+        set "PHP_EXE=%%i"
+        goto php_found
+    )
+)
+
+if exist "C:\laragon\bin\php\" (
+    for /f "delims=" %%d in ('dir /b /ad /o-n "C:\laragon\bin\php\php-*" 2^>nul') do (
+        if exist "C:\laragon\bin\php\%%d\php.exe" (
+            set "PHP_EXE=C:\laragon\bin\php\%%d\php.exe"
+            goto php_found
+        )
+    )
+)
+
+echo ERROR: PHP not found. Add Laragon PHP to PATH or install Laragon.
+echo.
+pause
+exit /b 1
+
+:php_found
+echo Project: %PROJECT_DIR%
+echo PHP:     %PHP_EXE%
+echo.
+
+if not exist "%PROJECT_DIR%\writable\logs" mkdir "%PROJECT_DIR%\writable\logs"
+
 echo Installing RFID Listener service...
 echo.
 
 REM Download NSSM if not exists
-if not exist "nssm.exe" (
+if not exist "%PROJECT_DIR%\nssm.exe" (
     echo Downloading NSSM (Non-Sucking Service Manager)...
-    powershell -Command "Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile 'nssm.zip'"
-    powershell -Command "Expand-Archive -Path 'nssm.zip' -DestinationPath '.' -Force"
-    copy "nssm-2.24\win64\nssm.exe" "nssm.exe"
-    rmdir /s /q nssm-2.24
-    del nssm.zip
+    powershell -Command "Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile '%PROJECT_DIR%\nssm.zip'"
+    powershell -Command "Expand-Archive -Path '%PROJECT_DIR%\nssm.zip' -DestinationPath '%PROJECT_DIR%' -Force"
+    copy "%PROJECT_DIR%\nssm-2.24\win64\nssm.exe" "%PROJECT_DIR%\nssm.exe"
+    rmdir /s /q "%PROJECT_DIR%\nssm-2.24"
+    del "%PROJECT_DIR%\nssm.zip"
     echo NSSM downloaded successfully!
     echo.
 )
 
-REM Install the service
+set "NSSM=%PROJECT_DIR%\nssm.exe"
+
+REM Remove existing service so re-run updates paths cleanly
+"%NSSM%" status RFIDListener >nul 2>&1
+if %errorLevel% equ 0 (
+    echo Existing RFIDListener service found — updating...
+    "%NSSM%" stop RFIDListener >nul 2>&1
+    "%NSSM%" remove RFIDListener confirm >nul 2>&1
+)
+
 echo Creating Windows Service...
-nssm install RFIDListener "C:\laragon\bin\php\php-8.3.20-Win32-vs16-x64\php.exe" "spark rfid:listen-all"
-nssm set RFIDListener AppDirectory "C:\laragon\www\workwise"
-nssm set RFIDListener DisplayName "WorkWise RFID Listener"
-nssm set RFIDListener Description "Listens to Yanzeo SA810 RFID reader for automatic attendance tracking"
-nssm set RFIDListener Start SERVICE_AUTO_START
-nssm set RFIDListener AppStdout "C:\laragon\www\workwise\writable\logs\rfid-listener.log"
-nssm set RFIDListener AppStderr "C:\laragon\www\workwise\writable\logs\rfid-listener-error.log"
-nssm set RFIDListener AppRotateFiles 1
-nssm set RFIDListener AppRotateOnline 1
-nssm set RFIDListener AppRotateBytes 1048576
+"%NSSM%" install RFIDListener "%PHP_EXE%" "spark rfid:listen-all"
+"%NSSM%" set RFIDListener AppDirectory "%PROJECT_DIR%"
+"%NSSM%" set RFIDListener DisplayName "WorkWise RFID Listener"
+"%NSSM%" set RFIDListener Description "Listens to all zone RFID readers (rfid:listen-all)"
+"%NSSM%" set RFIDListener Start SERVICE_AUTO_START
+"%NSSM%" set RFIDListener AppStdout "%PROJECT_DIR%\writable\logs\rfid-listener.log"
+"%NSSM%" set RFIDListener AppStderr "%PROJECT_DIR%\writable\logs\rfid-listener-error.log"
+"%NSSM%" set RFIDListener AppRotateFiles 1
+"%NSSM%" set RFIDListener AppRotateOnline 1
+"%NSSM%" set RFIDListener AppRotateBytes 1048576
 
 echo.
 echo Starting service...
-nssm start RFIDListener
+"%NSSM%" start RFIDListener
 
 echo.
 echo ================================================
@@ -52,17 +97,15 @@ echo   Service installed successfully!
 echo ================================================
 echo.
 echo Service Name: RFIDListener
-echo Status: Running
-echo Startup Type: Automatic
-echo.
-echo The RFID listener will now start automatically when Windows boots.
+echo Startup Type: Automatic (starts on Windows boot)
+echo Command:      php spark rfid:listen-all
 echo.
 echo Useful commands:
-echo   - Check status: nssm status RFIDListener
-echo   - Stop service: nssm stop RFIDListener
-echo   - Start service: nssm start RFIDListener
-echo   - Remove service: nssm remove RFIDListener confirm
+echo   - Check status: "%NSSM%" status RFIDListener
+echo   - Stop service: "%NSSM%" stop RFIDListener
+echo   - Start service: "%NSSM%" start RFIDListener
+echo   - Remove service: "%NSSM%" remove RFIDListener confirm
 echo.
-echo Logs are saved to: writable\logs\rfid-listener.log
+echo Logs: %PROJECT_DIR%\writable\logs\rfid-listener.log
 echo.
 pause

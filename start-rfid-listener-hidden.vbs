@@ -1,3 +1,8 @@
+Set fso = CreateObject("Scripting.FileSystemObject")
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run "cmd /c cd /d C:\laragon\www\workwise && php spark rfid:listen-all", 0, False
+
+scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+WshShell.Run "cmd /c cd /d """ & scriptDir & """ && php spark rfid:listen-all", 0, False
+
 Set WshShell = Nothing
+Set fso = Nothing

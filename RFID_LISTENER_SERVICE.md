@@ -70,9 +70,10 @@ To run this as a Windows service that starts automatically:
 4. **Install service**:
 
 ```cmd
+cd C:\laragon\www\workwise-kk
 nssm install RFIDListener "C:\laragon\bin\php\php-8.3.20-Win32-vs16-x64\php.exe"
-nssm set RFIDListener AppDirectory "C:\laragon\www\workwise"
-nssm set RFIDListener AppParameters "spark rfid:listen"
+nssm set RFIDListener AppDirectory "C:\laragon\www\workwise-kk"
+nssm set RFIDListener AppParameters "spark rfid:listen-all"
 nssm set RFIDListener DisplayName "WorkWise RFID Listener"
 nssm set RFIDListener Description "Listens to Yanzeo SA810 RFID reader for attendance tracking"
 nssm set RFIDListener Start SERVICE_AUTO_START

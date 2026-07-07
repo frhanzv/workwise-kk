@@ -51,7 +51,7 @@ Runs when you log in to Windows (no window shown).
 1. **Press** `Win + R`
 2. **Type**: `shell:startup` and press Enter
 3. **Right-click** in the startup folder → New → Shortcut
-4. **Browse to**: `C:\laragon\www\workwise\start-rfid-listener-hidden.vbs`
+4. **Browse to** `start-rfid-listener-hidden.vbs` in this project folder
 5. **Name it**: "RFID Listener"
 6. Click **Finish**
 
@@ -61,7 +61,7 @@ Now the listener will start automatically when you log in!
 
 **Check if running:**
 - Open Task Manager (Ctrl+Shift+Esc)
-- Look for `php.exe` with command line containing `rfid:listen`
+- Look for `php.exe` with command line containing `rfid:listen-all`
 
 **Stop it:**
 - End the `php.exe` process in Task Manager

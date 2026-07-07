@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 :start
 echo Starting RFID Reader Listener...
-php spark rfid:listen
+php spark rfid:listen-all
 
 echo.
 echo Service stopped. Restarting in 5 seconds...
