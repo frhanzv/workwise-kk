@@ -10,7 +10,8 @@ REM Check if running as administrator
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo ERROR: This script must be run as Administrator!
-    echo Right-click this file and select "Run as administrator"
+    echo Right-click install-rfid-service.bat and select "Run as administrator"
+    echo Do NOT run from an already-open cmd window unless it is elevated.
     echo.
     pause
     exit /b 1
@@ -38,7 +39,7 @@ if exist "C:\laragon\bin\php\" (
     )
 )
 
-echo ERROR: PHP not found. Add Laragon PHP to PATH or install Laragon.
+echo ERROR: PHP not found. Open Laragon once so PHP is available, then retry.
 echo.
 pause
 exit /b 1
@@ -56,13 +57,35 @@ echo.
 REM Download NSSM if not exists
 if not exist "%PROJECT_DIR%\nssm.exe" (
     echo Downloading NSSM (Non-Sucking Service Manager)...
-    powershell -Command "Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile '%PROJECT_DIR%\nssm.zip'"
-    powershell -Command "Expand-Archive -Path '%PROJECT_DIR%\nssm.zip' -DestinationPath '%PROJECT_DIR%' -Force"
-    copy "%PROJECT_DIR%\nssm-2.24\win64\nssm.exe" "%PROJECT_DIR%\nssm.exe"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile '%PROJECT_DIR%\nssm.zip' -UseBasicParsing; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+    if %errorLevel% neq 0 (
+        echo.
+        echo ERROR: Could not download NSSM. Check internet connection and retry.
+        echo Or download manually from https://nssm.cc/download
+        echo Place nssm.exe in: %PROJECT_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
+
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%PROJECT_DIR%\nssm.zip' -DestinationPath '%PROJECT_DIR%' -Force"
+    if not exist "%PROJECT_DIR%\nssm-2.24\win64\nssm.exe" (
+        echo ERROR: NSSM zip did not extract correctly.
+        pause
+        exit /b 1
+    )
+
+    copy /y "%PROJECT_DIR%\nssm-2.24\win64\nssm.exe" "%PROJECT_DIR%\nssm.exe" >nul
     rmdir /s /q "%PROJECT_DIR%\nssm-2.24"
     del "%PROJECT_DIR%\nssm.zip"
     echo NSSM downloaded successfully!
     echo.
+)
+
+if not exist "%PROJECT_DIR%\nssm.exe" (
+    echo ERROR: nssm.exe is missing at %PROJECT_DIR%\nssm.exe
+    pause
+    exit /b 1
 )
 
 set "NSSM=%PROJECT_DIR%\nssm.exe"
@@ -77,6 +100,12 @@ if %errorLevel% equ 0 (
 
 echo Creating Windows Service...
 "%NSSM%" install RFIDListener "%PHP_EXE%" "spark rfid:listen-all"
+if %errorLevel% neq 0 (
+    echo ERROR: nssm install failed.
+    pause
+    exit /b 1
+)
+
 "%NSSM%" set RFIDListener AppDirectory "%PROJECT_DIR%"
 "%NSSM%" set RFIDListener DisplayName "WorkWise RFID Listener"
 "%NSSM%" set RFIDListener Description "Listens to all zone RFID readers (rfid:listen-all)"
@@ -90,22 +119,28 @@ echo Creating Windows Service...
 echo.
 echo Starting service...
 "%NSSM%" start RFIDListener
+if %errorLevel% neq 0 (
+    echo WARNING: Service created but start failed. Check error log:
+    echo %PROJECT_DIR%\writable\logs\rfid-listener-error.log
+    echo.
+)
 
 echo.
 echo ================================================
-echo   Service installed successfully!
+echo   Installation finished
 echo ================================================
 echo.
-echo Service Name: RFIDListener
+"%NSSM%" status RFIDListener
+echo.
 echo Startup Type: Automatic (starts on Windows boot)
 echo Command:      php spark rfid:listen-all
 echo.
-echo Useful commands:
-echo   - Check status: "%NSSM%" status RFIDListener
-echo   - Stop service: "%NSSM%" stop RFIDListener
-echo   - Start service: "%NSSM%" start RFIDListener
-echo   - Remove service: "%NSSM%" remove RFIDListener confirm
+echo Manage the service with rfid-service.bat (no admin needed):
+echo   rfid-service.bat status
+echo   rfid-service.bat log
+echo   rfid-service.bat restart
 echo.
-echo Logs: %PROJECT_DIR%\writable\logs\rfid-listener.log
+echo Or use full path to nssm:
+echo   "%NSSM%" status RFIDListener
 echo.
 pause
