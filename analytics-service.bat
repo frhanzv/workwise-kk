@@ -3,26 +3,20 @@ setlocal
 cd /d "%~dp0"
 
 set "NSSM=%~dp0nssm.exe"
-set "LOG=%~dp0writable\logs\rfid-listener.log"
-set "ERR=%~dp0writable\logs\rfid-listener-error.log"
+set "LOG=%~dp0writable\logs\analytics-api.log"
+set "ERR=%~dp0writable\logs\analytics-api-error.log"
 
 if not exist "%NSSM%" (
     echo ERROR: nssm.exe not found in this folder.
-    echo.
-    echo The RFIDListener service is NOT installed yet.
-    echo Right-click install-rfid-service.bat ^> Run as administrator
-    echo.
+    echo Right-click install-analytics-service.bat ^> Run as administrator
     pause
     exit /b 1
 )
 
-sc.exe query RFIDListener >nul 2>&1
+sc.exe query AnalyticsAPI >nul 2>&1
 if %errorLevel% neq 0 (
-    echo RFIDListener service is NOT installed yet.
-    echo.
-    echo Right-click install-rfid-service.bat in this folder
-    echo and choose "Run as administrator".
-    echo.
+    echo AnalyticsAPI service is NOT installed yet.
+    echo Right-click install-analytics-service.bat ^> Run as administrator
     pause
     exit /b 1
 )
@@ -38,21 +32,21 @@ if /i "%1"=="error"   goto do_error
 goto usage
 
 :do_status
-"%NSSM%" status RFIDListener
+"%NSSM%" status AnalyticsAPI
 exit /b %errorLevel%
 
 :do_start
-"%NSSM%" start RFIDListener
+"%NSSM%" start AnalyticsAPI
 exit /b %errorLevel%
 
 :do_stop
-"%NSSM%" stop RFIDListener
+"%NSSM%" stop AnalyticsAPI
 exit /b %errorLevel%
 
 :do_restart
-"%NSSM%" stop RFIDListener
+"%NSSM%" stop AnalyticsAPI
 timeout /t 2 /nobreak >nul
-"%NSSM%" start RFIDListener
+"%NSSM%" start AnalyticsAPI
 exit /b %errorLevel%
 
 :do_log
@@ -72,16 +66,15 @@ type "%ERR%"
 exit /b 0
 
 :usage
-echo RFID Listener service helper
+echo Analytics API service helper
 echo.
-echo Usage: rfid-service.bat [command]
+echo Usage: analytics-service.bat [command]
 echo.
 echo   status   - show service status
 echo   start    - start service
 echo   stop     - stop service
 echo   restart  - restart service
-echo   log      - show rfid-listener.log
-echo   error    - show rfid-listener-error.log
+echo   log      - show analytics-api.log
+echo   error    - show analytics-api-error.log
 echo.
-echo NSSM path: %NSSM%
 exit /b 0
